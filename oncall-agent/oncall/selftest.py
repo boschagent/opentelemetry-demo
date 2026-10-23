@@ -483,6 +483,25 @@ def t_mcp_server_lists_and_calls_tools():
 
 
 @test
+def t_drill_catalog_and_labels():
+    """REQ: every practice incident has a truth label in a valid fault class; labels file is written atomically."""
+    from . import drill
+    from .triage import REMEDY
+    for k, (how, cmd, undo, comp, cls) in drill.CATALOG.items():
+        assert cls in REMEDY or cls == "none", (k, cls)
+        assert (cmd is None) == (undo is None), k
+    old = drill.HERE
+    drill.HERE = os.getcwd()
+    try:
+        os.makedirs("eval", exist_ok=True)
+        drill.write_label("payment")
+        lab = json.load(open("eval/labels.json"))["payment"]
+        assert lab["component"] == "payment" and lab["fault_class"] == "app_errors"
+    finally:
+        drill.HERE = old
+
+
+@test
 def t_record_replay_roundtrip():
     """REQ: telemetry recorded live can be replayed offline with identical answers (repeatable evaluation)."""
     d = tempfile.mkdtemp()
