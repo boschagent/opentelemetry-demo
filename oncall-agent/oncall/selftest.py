@@ -113,6 +113,13 @@ def scenario(name: str) -> dict:
         s["p95"].update({"payment": 158.0, "checkout": 31.6, "shipping": 173.0, "product-catalog": 139.0, "quote": 35.8})
         for old, code in (("adaptive-mongo", 0), ("developerhub_db", 137), ("qdrant", 143)):
             s["containers"][old] = {"status": "exited", "exit": code, "project": "otherstuff"}
+    elif name == "real_1733":   # P5's 17:33 run: flag NOT active; only chronic background noise on the laptop
+        s["err"] = {"frontend-proxy": 0.049}
+        s["err_base"] = {"frontend-proxy": 0.061}
+        s["containers"]["checkout"] = {"restarts": 1}
+        s["containers"]["product-catalog"] = {"health": "unhealthy"}
+        s["err_traces"] = {k: [trace(f"fp{i}", [span("a", None, "frontend-proxy", "router frontend egress", "server", 30, True, "upstream reset")])
+                               for i in range(22)] for k in ("frontend-proxy", "frontend", "checkout")}
     elif name == "combo":
         s.update(scenario("cart_down"))
         s["stats"]["ad"] = {"cpu": 180.0, "mem": 40.0}
@@ -196,7 +203,8 @@ class FakeDemo(Backend):
         if "histogram_quantile" in query:
             vals = {k: (20.0 if base else v) for k, v in self.s["p95"].items()}
         elif "STATUS_CODE_ERROR" in query:
-            vals = {k: (0.0 if base else self.s["rps"].get(k, 0) * r) for k, r in self.s["err"].items()}
+            src = self.s.get("err_base", {}) if base else self.s["err"]
+            vals = {k: (BASE_RPS.get(k, 0) if base else self.s["rps"].get(k, 0)) * r for k, r in src.items()}
         else:
             vals = {k: (BASE_RPS.get(k, 0) if base else v) for k, v in self.s["rps"].items()}
         res = [{"metric": {"service_name": k, "span_kind": "SPAN_KIND_SERVER"}, "value": [time.time(), str(v)]} for k, v in vals.items()]
@@ -216,6 +224,7 @@ class FakeDemo(Backend):
                 lim = c.get("cpu_limit")
                 out.append({"Name": "/" + n, "RestartCount": c.get("restarts", 0), "Created": "2026-10-23T08:00:00.0Z",
                             "State": {"Status": st, "OOMKilled": False, "ExitCode": c.get("exit", 0),
+                                      **({"Health": {"Status": c["health"]}} if c.get("health") else {}),
                                       "StartedAt": "2026-10-23T08:00:05.0Z", "FinishedAt": "0001-01-01T00:00:00Z"},
                             "HostConfig": {"NanoCpus": int(lim * 1e9) if lim else 0, "Memory": 0},
                             "Config": {"Image": f"ghcr.io/open-telemetry/demo:latest-{n}",
@@ -620,6 +629,53 @@ def t_llm_model_autoselect():
     assert brain._pick(["whisper-large-v3", "llama-guard-4-12b", "openai/gpt-oss-20b", "openai/gpt-oss-120b"]) == "openai/gpt-oss-120b"
     assert brain._pick(["whisper-large-v3", "some-new-70b-chat"]) == "some-new-70b-chat"
     assert brain._pick(["gemini-2.5-flash", "text-embedding-004"]) == "gemini-2.5-flash"
+
+
+@test
+def t_real_background_noise_not_blamed():
+    """REQ (from live data 17:33): chronic errors / old restarts / always-unhealthy containers that were already
+    there when healthy must not become a confident root cause."""
+    json.dump({"stats": {}, "log_errors": {}, "health": {"product-catalog": {"health": "unhealthy", "restarts": 0},
+                                                         "checkout": {"health": None, "restarts": 1}}}, open("baseline.json", "w"))
+    try:
+        L = Ledger()
+        tri = Triage(FakeDemo(scenario("real_1733")), CFG, L).run()
+        strong = [x for x in tri["suspects"] if x["score"] >= 0.6]
+        assert not strong, strong
+        d = brain.decide(CFG, tri, None, L, None)
+        assert d["escalate"] or d["component"] is None, d
+    finally:
+        os.remove("baseline.json")
+    tri = Triage(FakeDemo(scenario("real_1733")), CFG, Ledger()).run()   # even without a baseline: old restart is not news
+    assert not any(x["fault_class"] == "crash_restart" for x in tri["suspects"]), tri["suspects"]
+
+
+@test
+def t_llm_json_mode_fallback_sticky():
+    """REQ (from live data 17:33): Groq 'json_validate_failed' (HTTP 400) -> retry without JSON mode and stay off."""
+    import urllib.request, urllib.error, io
+    bodies = []
+
+    class R:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return json.dumps({"choices": [{"message": {"content": '{"ok": 1}'}}]}).encode()
+
+    def fake(req, timeout=0):
+        b = json.loads(req.data)
+        bodies.append(b)
+        if "response_format" in b:
+            raise urllib.error.HTTPError(req.full_url, 400, "bad", {}, io.BytesIO(b'{"error":{"code":"json_validate_failed"}}'))
+        return R()
+    orig = urllib.request.urlopen
+    urllib.request.urlopen = fake
+    try:
+        llm = brain.LLM(Config(llm_base_url="http://x", llm_model="m"))
+        assert brain.parse_json(llm.chat([{"role": "user", "content": "a"}])) == {"ok": 1}
+        llm.chat([{"role": "user", "content": "b"}])
+    finally:
+        urllib.request.urlopen = orig
+    assert len(bodies) == 3 and "response_format" not in bodies[2] and not llm.json_mode
 
 
 @test

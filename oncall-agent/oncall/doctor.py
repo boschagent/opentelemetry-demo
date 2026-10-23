@@ -110,7 +110,9 @@ def record_baseline(be: Backend, cfg: Config, samples: int = 3) -> dict:
         if lg.get("ok"):
             logs[n] = (lg.get("data") or {}).get("matched", 0)
     red = metrics.service_red(be, cfg)
-    base = {"recorded_at": now_iso(), "stats": stats, "log_errors": logs, "red": red.get("data") or []}
+    h = infra.container_health(be, cfg)
+    health = {c["name"]: {"health": c["health"], "restarts": c["restarts"], "status": c["status"]} for c in h.get("data") or []}
+    base = {"recorded_at": now_iso(), "stats": stats, "log_errors": logs, "red": red.get("data") or [], "health": health}
     atomic_write(cfg.baseline_file, json.dumps(base, indent=1))
     return base
 

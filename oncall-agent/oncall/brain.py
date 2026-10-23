@@ -24,20 +24,22 @@ class LLM:
         self.enabled = bool(cfg.llm_base_url and cfg.llm_model)
         self.calls = 0
         self.tokens = 0
+        self.json_mode = True   # switched off for good after the provider rejects a JSON-mode generation
 
     def pick_model(self, headers: dict) -> str | None:
         return _pick([m.replace("models/", "") for m in _list_models(self.cfg, headers)])
 
     def chat(self, messages: list[dict], temperature: float = 0.1) -> str:
         url = self.cfg.llm_base_url.rstrip("/") + "/chat/completions"
-        body = {"model": self.cfg.llm_model, "messages": messages, "temperature": temperature,
-                "response_format": {"type": "json_object"}}
+        body = {"model": self.cfg.llm_model, "messages": messages, "temperature": temperature}
+        if self.json_mode:
+            body["response_format"] = {"type": "json_object"}
         headers = {"Content-Type": "application/json",  # explicit UA: Groq/Cloudflare blocks Python's default (HTTP 403 code 1010)
                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) oncall-agent/1.0"}
         if self.cfg.llm_api_key:
             headers["Authorization"] = f"Bearer {self.cfg.llm_api_key}"
         last = ""
-        for attempt in range(4):
+        for attempt in range(7):
             req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
             try:
                 with urllib.request.urlopen(req, timeout=90) as r:
@@ -53,11 +55,12 @@ class LLM:
                         print(f"   (model '{body['model']}' unavailable -> switching to '{new}')")
                         body["model"] = self.cfg.llm_model = new
                         continue
-                if e.code == 400 and "response_format" in body:   # provider without JSON mode
+                if e.code == 400 and "response_format" in body:   # provider without JSON mode, or Groq json_validate_failed
                     body.pop("response_format")
+                    self.json_mode = False                         # live lesson 17:33: stay off; parse_json copes
                     continue
-                if e.code in (429, 500, 502, 503):
-                    time.sleep(3 * (attempt + 1))
+                if e.code in (429, 500, 502, 503):                 # free tiers rate-limit: back off up to ~20 s
+                    time.sleep(min(20, 4 * (attempt + 1)))
                     continue
                 break
             except Exception as e:
@@ -165,7 +168,7 @@ def run_tool(be: Backend, cfg: Config, ledger: Ledger, name: str, args: dict) ->
     except TypeError as e:
         return f"ERROR: bad args for {name}: {e}"
     ev = ledger.add(name, args or {}, res.get("source", ""), res.get("summary", ""), res.get("data"))
-    return f"[{ev.id}] ({name}) {ev.summary[:3000]}"
+    return f"[{ev.id}] ({name}) {ev.summary[:1800]}"   # keep prompts inside free-tier token limits
 
 
 def investigate(be: Backend, cfg: Config, ledger: Ledger, llm: LLM, tri: dict, alert: str, log) -> tuple[dict | None, list]:

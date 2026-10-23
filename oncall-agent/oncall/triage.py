@@ -43,6 +43,13 @@ CALLS = {
 }
 
 
+def _recent(ts: str | None, seconds: int) -> bool:
+    from .tools.infra import _parse_ts
+    import time as _t
+    t = _parse_ts(ts or "")
+    return bool(t) and _t.time() - t <= seconds
+
+
 def load_baseline(path: str) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
@@ -119,7 +126,8 @@ class Triage:
         red = self._call("service_red", metrics.service_red)
         known = {c["name"] for c in health.get("data") or []} | {r["service"] for r in red.get("data") or []}
 
-        # R1/R2: containers down, restarting, OOM-killed
+        # R1/R2: containers down, restarting, OOM-killed (restarts/unhealthy compared with the healthy baseline)
+        bhealth = load_baseline(getattr(self.cfg, "baseline_file", "baseline.json")).get("health", {})
         for c in health.get("data") or []:
             if c["name"] in NOT_APP:
                 continue
@@ -128,10 +136,14 @@ class Triage:
                           f"container {c['name']} status={c['status']} exit_code={c['exit_code']}", health["ev"])
             elif c["oom_killed"]:
                 self._add(c["name"], "oom", 0.75, f"{c['name']} was OOM-killed (restarts={c['restarts']})", health["ev"])
-            elif c["restarts"] and c["restarts"] > 0:
-                self._add(c["name"], "crash_restart", 0.6, f"{c['name']} restart count={c['restarts']}", health["ev"])
-            elif c["health"] == "unhealthy":
-                self._add(c["name"], "service_down", 0.6, f"{c['name']} healthcheck=unhealthy", health["ev"])
+            elif c["restarts"] and c["restarts"] > bhealth.get(c["name"], {}).get("restarts", 0) and \
+                    (c["name"] in bhealth or _recent(c.get("started_at"), 900)):
+                self._add(c["name"], "crash_restart", 0.6, f"{c['name']} restart count={c['restarts']} "
+                          f"(healthy baseline {bhealth.get(c['name'], {}).get('restarts', 'n/a')})", health["ev"])
+            elif c["health"] == "unhealthy" and bhealth.get(c["name"], {}).get("health") != "unhealthy":
+                # live lesson 17:33: product-catalog was 'unhealthy' from the start on P5's laptop -> not news
+                self._add(c["name"], "service_down", 0.6 if c["name"] in bhealth else 0.4,
+                          f"{c['name']} healthcheck=unhealthy", health["ev"])
 
         # R3/R4: resource pressure, relative to the healthy baseline when we have one
         base = load_baseline(getattr(self.cfg, "baseline_file", "baseline.json"))
@@ -237,8 +249,14 @@ class Triage:
         for (o_svc, op), (n, ev) in sorted(origins.items(), key=lambda kv: -kv[1][0])[:3]:
             share = n / total if total else 0
             if share >= T["origin_share"] or len(origins) == 1:
-                self._add(o_svc, "app_errors", 0.45 + 0.4 * share,
-                          f"{n} error traces originate in {o_svc} / {op} ({share:.0%} of failing requests)", ev)
+                r = by.get(o_svc)
+                chronic = r is not None and o_svc not in err_set and r["error_rate"] <= r["error_rate_base"] + T["err_delta"]
+                if chronic:   # live lesson 17:33: frontend-proxy errs ~6% even when healthy -> background noise, not the incident
+                    self._add(o_svc, "app_errors", 0.25, f"{n} error traces originate in {o_svc} / {op}, but its error rate "
+                              f"{r['error_rate']:.1%} is not above its baseline {r['error_rate_base']:.1%} (background noise)", ev)
+                else:
+                    self._add(o_svc, "app_errors", 0.45 + 0.4 * share,
+                              f"{n} error traces originate in {o_svc} / {op} ({share:.0%} of failing requests)", ev)
         for (frm, peer), (n, ev) in sorted(orphans.items(), key=lambda kv: -kv[1][0])[:3]:
             tgt = _peer_to_service(peer, known)
             if tgt and tgt != frm:
