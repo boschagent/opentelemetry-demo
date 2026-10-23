@@ -1,0 +1,8 @@
+oncall.env
+KILL
+logs/
+incidents/TEST-*
+__pycache__/
+*.pyc
+practice/.injected.json
+*.tmp
