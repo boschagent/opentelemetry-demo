@@ -6,6 +6,8 @@ Every threshold lives in THRESHOLDS so it can be tuned on the practice set (see 
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -18,13 +20,35 @@ THRESHOLDS = {
     "p95_ratio": 2.0,         # latency x2 vs baseline
     "p95_min_delta_ms": 50,
     "rps_surge_ratio": 2.0,   # frontend traffic x2 vs baseline
-    "mem_pct": 85.0,
+    "mem_pct": 97.0,          # absolute memory alarm when no baseline exists (real demo idles at ~90% for JVM/Go services)
+    "mem_over_base": 5.0,     # with a baseline: alarm if >= baseline + 5 points AND >= 95%
     "cpu_pct_hot": 80.0,      # % of one core
+    "cpu_over_base": 3.0,     # with a baseline: alarm if >= 3x baseline + 20 points
+    "log_err_min": 10,        # error/warn log lines in the last 3 min ...
+    "log_err_factor": 3.0,    # ... and >= 3x the baseline count
     "cpu_limit_frac": 0.8,    # using >=80% of an explicit CPU limit
     "gap_ms": 100.0,          # network gap caller->callee
     "origin_share": 0.5,
 }
-NOT_APP = infra.OBSERVABILITY | {"load-generator"}
+NOT_APP = infra.OBSERVABILITY | {"load-generator", "otel-collector"}
+EDGE = {"frontend", "frontend-proxy"}
+# Static call graph of the Astronomy Shop (from the demo architecture docs). Used only to prefer the
+# DEEPEST failing service when several services log errors (callers log errors when callees fail).
+CALLS = {
+    "frontend-proxy": ["frontend", "image-provider"],
+    "frontend": ["ad", "cart", "checkout", "currency", "product-catalog", "recommendation", "shipping"],
+    "checkout": ["cart", "currency", "email", "payment", "product-catalog", "shipping", "kafka"],
+    "cart": ["valkey-cart"], "recommendation": ["product-catalog"], "shipping": ["quote"],
+    "product-catalog": ["astronomy-db"], "accounting": ["kafka", "astronomy-db"], "fraud-detection": ["kafka"],
+}
+
+
+def load_baseline(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 # fault class -> default safe remedy (must exist in runbook allowlist). None = escalate to a human.
 REMEDY = {
@@ -109,19 +133,56 @@ class Triage:
             elif c["health"] == "unhealthy":
                 self._add(c["name"], "service_down", 0.6, f"{c['name']} healthcheck=unhealthy", health["ev"])
 
-        # R3/R4: resource pressure
+        # R3/R4: resource pressure, relative to the healthy baseline when we have one
+        base = load_baseline(getattr(self.cfg, "baseline_file", "baseline.json"))
+        bstats = base.get("stats", {})
+        self.signals["baseline"] = bool(base)
         limits = {c["name"]: c for c in health.get("data") or []}
         for s in stats.get("data") or []:
             if s["name"] in NOT_APP:
                 continue
             lim = (limits.get(s["name"]) or {}).get("cpu_limit_cores")
-            if s["mem_pct"] >= T["mem_pct"]:
-                self._add(s["name"], "memory_pressure", 0.6, f"{s['name']} memory at {s['mem_pct']}% of its limit", stats["ev"])
+            b = bstats.get(s["name"])
+            if b:
+                mem_hot = s["mem_pct"] >= max(95.0, b["mem_pct"] + T["mem_over_base"])
+                cpu_hot = s["cpu_pct"] >= max(T["cpu_pct_hot"], b["cpu_pct"] * T["cpu_over_base"] + 20)
+                bnote = f" (healthy baseline {b['mem_pct']}% mem / {b['cpu_pct']}% cpu)"
+            else:
+                mem_hot = s["mem_pct"] >= T["mem_pct"]
+                cpu_hot = s["cpu_pct"] >= T["cpu_pct_hot"]
+                bnote = " (no baseline recorded)"
+            if mem_hot:
+                self._add(s["name"], "memory_pressure", 0.6, f"{s['name']} memory at {s['mem_pct']}% of its limit{bnote}", stats["ev"])
             if lim and lim < 1.0 and s["cpu_pct"] >= T["cpu_limit_frac"] * lim * 100:
                 self._add(s["name"], "cpu_starved", 0.7,
                           f"{s['name']} pinned at {s['cpu_pct']}% CPU against a {lim}-core limit", stats["ev"])
-            elif s["cpu_pct"] >= T["cpu_pct_hot"]:
-                self._add(s["name"], "high_cpu", 0.6, f"{s['name']} using {s['cpu_pct']}% CPU (>= {T['cpu_pct_hot']}% of a core)", stats["ev"])
+            elif cpu_hot:
+                self._add(s["name"], "high_cpu", 0.6, f"{s['name']} using {s['cpu_pct']}% CPU{bnote}", stats["ev"])
+
+        # R8: error bursts in container logs (works even when Prometheus/Jaeger are down)
+        blogs = base.get("log_errors", {})
+        bursts = {}
+        running = [c["name"] for c in health.get("data") or [] if c["status"] == "running" and c["name"] not in NOT_APP
+                   and c["name"] not in {"valkey-cart", "kafka", "astronomy-db", "postgresql"}]
+        for name in running:
+            lg = infra.get_logs(self.be, self.cfg, name, minutes=3, max_lines=8)
+            n = (lg.get("data") or {}).get("matched", 0) if lg.get("ok") else 0
+            if n >= max(T["log_err_min"], T["log_err_factor"] * blogs.get(name, 0)):
+                ev = self.ledger.add("get_logs", {"service": name, "minutes": 3}, lg["source"], lg["summary"], lg["data"])
+                bursts[name] = (n, ev.id)
+        self.signals["log_bursts"] = {k: v[0] for k, v in bursts.items()}
+        for name, (n, ev) in bursts.items():
+            callees_bursting = [c for c in CALLS.get(name, []) if c in bursts]
+            if callees_bursting:      # a service it calls is also failing -> probably a symptom
+                score = 0.3
+            elif name in EDGE:
+                score = 0.35
+            else:
+                score = 0.5
+            why = f"{name} logged {n} error/warn lines in the last 3 min (baseline {blogs.get(name, 0)})"
+            if callees_bursting:
+                why += f"; but its dependencies {callees_bursting} are also failing (likely symptom)"
+            self._add(name, "app_errors", score, why, ev)
 
         rows = red.get("data") or []
         by = {r["service"]: r for r in rows}
@@ -194,7 +255,7 @@ class Triage:
             "combination": len({s.component for s in strong}) >= 2,
             "healthy": not ranked,
             "signals": self.signals,
-            "tool_errors": [n for n, r in (("container_health", health), ("container_stats", stats), ("service_red", red)) if not r.get("ok")],
+            "tool_errors": [f"{n}: {r.get('summary', '')[:160]}" for n, r in (("container_health", health), ("container_stats", stats), ("service_red", red)) if not r.get("ok")],
         }
         return out
 

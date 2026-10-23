@@ -76,7 +76,7 @@ def scenario(name: str) -> dict:
             span("b", "a", "frontend", "oteldemo.CartService/GetCart", "client", 40, True, "connect ECONNREFUSED",
                  extra_tags=[{"key": "server.address", "value": "cart"}])]) for i in range(6)] for k in ("frontend", "frontend-proxy")}
     elif name == "rec_memory":
-        s["stats"]["recommendation"] = {"cpu": 30.0, "mem": 96.0}
+        s["stats"]["recommendation"] = {"cpu": 30.0, "mem": 99.0}
         s["p95"]["recommendation"] = 30.0
     elif name == "ad_cpu":
         s["stats"]["ad"] = {"cpu": 180.0, "mem": 40.0}
@@ -97,6 +97,14 @@ def scenario(name: str) -> dict:
         s["containers"]["product-catalog"] = {"cpu_limit": 0.1}
         s["stats"]["product-catalog"] = {"cpu": 9.9, "mem": 30.0}
         s["p95"]["product-catalog"] = 300.0
+    elif name == "real_idle":   # what P5's live demo really looked like when healthy (2026-10-23 15:40)
+        s["stats"].update({"ad": {"cpu": 3.0, "mem": 92.33}, "product-catalog": {"cpu": 1.0, "mem": 89.2},
+                           "astronomy-db": {"cpu": 1.0, "mem": 88.12}})
+    elif name == "payment_logs_only":   # Prometheus/Jaeger down: only logs available
+        s["prom_down"] = True
+        err = "\n".join(f"2026-10-23T10:0{i}:00Z error: Payment request failed. Invalid token." for i in range(9))
+        s["logs"] = {"payment": err + "\n" + err, "checkout": err.replace("Payment request", "failed to charge card:"),
+                     "frontend": err.replace("Payment request", "checkout failed:")}
     elif name == "combo":
         s.update(scenario("cart_down"))
         s["stats"]["ad"] = {"cpu": 180.0, "mem": 40.0}
@@ -122,6 +130,8 @@ class FakeDemo(Backend):
         u = urllib.parse.urlsplit(url)
         q = dict(urllib.parse.parse_qsl(u.query))
         if u.path.endswith("/api/v1/query"):
+            if self.s.get("prom_down"):
+                return {"ok": False, "status": 0, "json": None, "text": "", "error": "URLError: connection refused"}
             return self._prom(q["query"])
         if u.path.endswith("/api/services"):
             return {"ok": True, "status": 200, "json": {"data": [k for k in BASE_RPS] + ["flagd"]}, "text": "", "error": ""}
@@ -192,6 +202,7 @@ EXPECT = {  # scenario -> (top component, fault class)
     "cpu_starved": ("product-catalog", "cpu_starved"),
     "combo": ("cart", "service_down"),
     "valkey_paused": ("valkey-cart", "service_down"),
+    "payment_logs_only": ("payment", "app_errors"),
 }
 TESTS = []
 
@@ -243,6 +254,22 @@ def t_triage_scenarios():
         top = tri["suspects"][0]
         assert (top["component"], top["fault_class"]) == (comp, cls), f"{name}: got {top} all={tri['suspects'][:3]}"
         assert top["evidence"], f"{name}: top suspect has no evidence ids"
+
+
+@test
+def t_real_idle_no_false_alarm_with_baseline():
+    """REQ (from live data): services that normally idle near their memory limit must NOT raise alarms."""
+    assert Triage(FakeDemo(scenario("real_idle")), CFG, Ledger()).run()["healthy"], "no-baseline thresholds too tight"
+    json.dump({"stats": {"ad": {"cpu_pct": 3.0, "mem_pct": 91.9}, "recommendation": {"cpu_pct": 5, "mem_pct": 40}},
+               "log_errors": {}}, open("baseline.json", "w"))
+    try:
+        assert Triage(FakeDemo(scenario("real_idle")), CFG, Ledger()).run()["healthy"]
+        sc = scenario("rec_memory")
+        sc["stats"]["recommendation"] = {"cpu": 5.0, "mem": 96.0}   # 40% -> 96% vs baseline = real leak
+        top = Triage(FakeDemo(sc), CFG, Ledger()).run()["suspects"][0]
+        assert (top["component"], top["fault_class"]) == ("recommendation", "memory_pressure"), top
+    finally:
+        os.remove("baseline.json")
 
 
 @test

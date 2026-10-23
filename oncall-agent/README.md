@@ -13,6 +13,10 @@ An agent that receives an alert from the OpenTelemetry Astronomy Shop and works 
 # 1) prove the code does what it should (offline, ~5 s)
 python -m oncall.selftest
 
+# 1b) check the live setup (prints the exact fix for anything missing), then learn "healthy"
+python -m oncall.doctor
+python -m oncall.doctor --baseline      # run ONLY when no fault is injected
+
 # 2) start the Action API (the ONLY thing allowed to change the demo); keep this window open
 python -m oncall.action_api
 

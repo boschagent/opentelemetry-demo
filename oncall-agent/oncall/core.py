@@ -55,6 +55,7 @@ class Config:
     verify_minutes: float = 4.0
     dry_run: bool = True               # SAFE DEFAULT: nothing changes unless --execute
     kill_file: str = "KILL"
+    baseline_file: str = "baseline.json"
 
     @classmethod
     def from_env(cls) -> "Config":

@@ -48,6 +48,15 @@ def main():
         print(__doc__)
         return
     cmd, args, st = sys.argv[1], sys.argv[2:], load()
+    if cmd != "reset" and args:
+        chk = subprocess.run(["docker", "inspect", "-f", "{{.State.Status}}", args[0]], capture_output=True, text=True)
+        if chk.returncode != 0:
+            print(f"Container '{args[0]}' does not exist. Start the demo first (in the opentelemetry-demo folder):\n"
+                  "  docker compose -f compose.yaml -f compose.observability.yaml up -d\nthen: python -m oncall.doctor")
+            return
+        if chk.stdout.strip() != "running":
+            print(f"Container '{args[0]}' is '{chk.stdout.strip()}', not running. Run: python practice/inject.py reset")
+            return
     if cmd == "stop":
         sh("stop", args[0]); st.append({"kind": "stop", "svc": args[0]})
     elif cmd == "pause":
