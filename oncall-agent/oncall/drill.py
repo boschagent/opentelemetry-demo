@@ -67,8 +67,8 @@ def setup(max_tries: int = 30) -> int:
         print("Could not download all images. Use a phone hotspot or ask organisers for the USB images, then rerun setup.")
         return 1
     say("STEP 2/3  Starting the demo with Prometheus + Jaeger")
-    if subprocess.run(COMPOSE + ["up", "-d"], cwd=REPO).returncode != 0:
-        print("docker compose up failed - copy the error to Claude.")
+    if not start_stack():
+        print("docker compose up kept failing - send Claude the last 30 lines AND the output of:  docker logs opensearch --tail 40")
         return 1
     say("STEP 3/3  Waiting for telemetry to flow (checks every 30s, up to 10 min)")
     cfg, be = Config.from_env(), Backend()
@@ -86,6 +86,21 @@ def setup(max_tries: int = 30) -> int:
     doctor.record_baseline(be, cfg)
     say("SETUP DONE. Next:  python -m oncall.drill run payment     (or: python -m oncall.drill all)")
     return 0
+
+
+def start_stack(tries: int = 4) -> bool:
+    """`compose up`, auto-healing the usual laptop failure: OpenSearch slow/unhealthy (needs vm.max_map_count on
+    Docker Desktop/WSL2, and time). The otel-collector waits for OpenSearch, so without this no telemetry flows."""
+    for i in range(1, tries + 1):
+        if subprocess.run(COMPOSE + ["up", "-d"], cwd=REPO).returncode == 0:
+            return True
+        st = subprocess.run(["docker", "inspect", "-f", "{{.State.Health.Status}}", "opensearch"], capture_output=True, text=True).stdout.strip()
+        print(f"\n  Try {i}: compose up failed (opensearch health={st or '?'}). Auto-fixing ...")
+        if os.name == "nt":  # Docker Desktop on Windows: OpenSearch needs a bigger mmap limit inside the WSL VM
+            subprocess.run(["wsl", "-d", "docker-desktop", "-u", "root", "sysctl", "-w", "vm.max_map_count=262144"])
+        subprocess.run(["docker", "restart", "opensearch"])
+        countdown(60, "giving OpenSearch time to become healthy")
+    return False
 
 
 def ensure_action_api(cfg: Config) -> None:
