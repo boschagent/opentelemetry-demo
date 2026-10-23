@@ -76,8 +76,15 @@ def container_health(be: Backend, cfg: Config) -> dict:
             "compose_project": labels.get("com.docker.compose.project"),
             "compose_service": labels.get("com.docker.compose.service"),
         })
+    # Keep ONLY the demo's own containers (same compose project as the frontend). Lesson from P5's laptop:
+    # unrelated old containers (qdrant, developerhub...) were being blamed.
+    proj = next((x["compose_project"] for x in rows if x["name"] in ("frontend", "otel-collector", "cart") and x["compose_project"]), None)
+    others = [x["name"] for x in rows if proj and x["compose_project"] != proj]
+    if proj:
+        rows = [x for x in rows if x["compose_project"] == proj]
     bad = [x for x in rows if x["status"] != "running" or x["health"] == "unhealthy" or x["oom_killed"] or x["restarts"]]
-    lines = [f"{len(rows)} containers; {len(rows) - len(bad)} running normally."]
+    lines = [f"{len(rows)} demo containers (compose project '{proj}'); {len(rows) - len(bad)} running normally."
+             + (f" Ignored {len(others)} unrelated containers." if others else "")]
     for x in bad:
         lines.append(f"  !! {x['name']}: status={x['status']} health={x['health']} restarts={x['restarts']} "
                      f"oom={x['oom_killed']} exit={x['exit_code']} finished_at={x['finished_at']}")
@@ -99,6 +106,10 @@ def container_stats(be: Backend, cfg: Config) -> dict:
             continue
         rows.append({"name": j.get("Name"), "cpu_pct": _pct(j.get("CPUPerc")), "mem_pct": _pct(j.get("MemPerc")),
                      "mem_usage": j.get("MemUsage"), "net_io": j.get("NetIO"), "pids": j.get("PIDs")})
+    h = container_health(be, cfg)
+    demo = {c["name"] for c in h.get("data") or []}
+    if demo:
+        rows = [x for x in rows if x["name"] in demo]
     rows.sort(key=lambda x: -max(x["cpu_pct"], x["mem_pct"]))
     lines = [f"{x['name']}: cpu={x['cpu_pct']}% mem={x['mem_pct']}% ({x['mem_usage']})" for x in rows[:15]]
     return {"ok": True, "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\n" + "\n".join(lines),

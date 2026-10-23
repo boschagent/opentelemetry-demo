@@ -108,6 +108,11 @@ def scenario(name: str) -> dict:
     elif name == "payment_traces_only":   # live run 17:00: metrics showed nothing yet, traces did
         s.update(scenario("payment_errors"))
         s["err"] = {}
+    elif name == "real_1714":   # exact signals from P5's live payment run at 17:14 (Prometheus only, plus his old containers)
+        s["err"] = {"payment": 1.0, "checkout": 1.0, "frontend-proxy": 0.003}
+        s["p95"].update({"payment": 158.0, "checkout": 31.6, "shipping": 173.0, "product-catalog": 139.0, "quote": 35.8})
+        for old, code in (("adaptive-mongo", 0), ("developerhub_db", 137), ("qdrant", 143)):
+            s["containers"][old] = {"status": "exited", "exit": code, "project": "otherstuff"}
     elif name == "combo":
         s.update(scenario("cart_down"))
         s["stats"]["ad"] = {"cpu": 180.0, "mem": 40.0}
@@ -213,7 +218,8 @@ class FakeDemo(Backend):
                             "State": {"Status": st, "OOMKilled": False, "ExitCode": c.get("exit", 0),
                                       "StartedAt": "2026-10-23T08:00:05.0Z", "FinishedAt": "0001-01-01T00:00:00Z"},
                             "HostConfig": {"NanoCpus": int(lim * 1e9) if lim else 0, "Memory": 0},
-                            "Config": {"Image": f"ghcr.io/open-telemetry/demo:latest-{n}", "Labels": {},
+                            "Config": {"Image": f"ghcr.io/open-telemetry/demo:latest-{n}",
+                                       "Labels": {"com.docker.compose.project": c.get("project", "agentcode")},
                                        "Env": ["X" * 200] * (40 if self.s.get("big_inspect") else 0)}})
             return {"ok": True, "stdout": json.dumps(out), "stderr": "", "code": 0}
         if cmd[:2] == ["docker", "stats"]:
@@ -241,6 +247,7 @@ EXPECT = {  # scenario -> (top component, fault class)
     "valkey_paused": ("valkey-cart", "service_down"),
     "payment_logs_only": ("payment", "app_errors"),
     "payment_traces_only": ("payment", "app_errors"),
+    "real_1714": ("payment", "app_errors"),
 }
 TESTS = []
 
@@ -594,6 +601,25 @@ def t_llm_sends_browser_user_agent():
         urllib.request.urlopen = orig
     ua = {k.lower(): v for k, v in seen.items()}.get("user-agent", "")
     assert ua.startswith("Mozilla/5.0") and "Python-urllib" not in ua, ua
+
+
+@test
+def t_real_unrelated_containers_ignored():
+    """REQ (from live data): stopped containers from OTHER projects on the laptop must never be blamed or restarted."""
+    from .tools import infra
+    tri = Triage(FakeDemo(scenario("real_1714")), CFG, Ledger()).run()
+    comps = {x["component"] for x in tri["suspects"]}
+    assert not comps & {"adaptive-mongo", "developerhub_db", "qdrant"}, comps
+    h = infra.container_health(FakeDemo(scenario("real_1714")), CFG)
+    assert "Ignored 3 unrelated" in h["summary"], h["summary"]
+
+
+@test
+def t_llm_model_autoselect():
+    """REQ (from live data): Groq retired llama-3.3-70b-versatile; agent must pick an available chat model."""
+    assert brain._pick(["whisper-large-v3", "llama-guard-4-12b", "openai/gpt-oss-20b", "openai/gpt-oss-120b"]) == "openai/gpt-oss-120b"
+    assert brain._pick(["whisper-large-v3", "some-new-70b-chat"]) == "some-new-70b-chat"
+    assert brain._pick(["gemini-2.5-flash", "text-embedding-004"]) == "gemini-2.5-flash"
 
 
 @test

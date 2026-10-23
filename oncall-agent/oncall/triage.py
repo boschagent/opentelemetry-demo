@@ -199,6 +199,17 @@ class Triage:
         # R5: where do errors originate? (trace analysis of the services whose error rate jumped)
         erroring = [r for r in rows if r["error_rate"] >= T["err_abs"] and r["error_rate"] - r["error_rate_base"] >= T["err_delta"]]
         self.signals["erroring"] = [r["service"] for r in erroring]
+        # R5a: metrics-only origin. If a service's error rate jumped and none of the services it calls did,
+        # it is the DEEPEST failing service = likely origin (callers just propagate). Needs no traces.
+        err_set = {r["service"] for r in erroring}
+        for r in erroring:
+            deeper = [c for c in CALLS.get(r["service"], []) if c in err_set]
+            if not deeper and r["service"] not in EDGE:
+                callers = sorted(c for c, callees in CALLS.items() if r["service"] in callees and c in err_set)
+                self._add(r["service"], "app_errors", 0.55 + 0.25 * min(1.0, r["error_rate"]),
+                          f"{r['service']} error rate {r['error_rate']:.1%} (baseline {r['error_rate_base']:.1%}); "
+                          f"none of its dependencies are failing" + (f"; callers {callers} fail too (propagated symptom)" if callers else ""),
+                          red["ev"])
         # Probe the deepest erroring services first (non-edge), dedupe traces across probes so the same
         # failing request seen from frontend AND frontend-proxy is counted once.
         edge = {"frontend", "frontend-proxy"}

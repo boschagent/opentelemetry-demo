@@ -25,6 +25,9 @@ class LLM:
         self.calls = 0
         self.tokens = 0
 
+    def pick_model(self, headers: dict) -> str | None:
+        return _pick([m.replace("models/", "") for m in _list_models(self.cfg, headers)])
+
     def chat(self, messages: list[dict], temperature: float = 0.1) -> str:
         url = self.cfg.llm_base_url.rstrip("/") + "/chat/completions"
         body = {"model": self.cfg.llm_model, "messages": messages, "temperature": temperature,
@@ -44,6 +47,12 @@ class LLM:
                 return j["choices"][0]["message"]["content"] or ""
             except urllib.error.HTTPError as e:
                 last = f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:300]}"
+                if e.code in (400, 404) and ("model_not_found" in last or "does not exist" in last or "decommissioned" in last):
+                    new = self.pick_model(headers)
+                    if new and new != body["model"]:
+                        print(f"   (model '{body['model']}' unavailable -> switching to '{new}')")
+                        body["model"] = self.cfg.llm_model = new
+                        continue
                 if e.code == 400 and "response_format" in body:   # provider without JSON mode
                     body.pop("response_format")
                     continue
@@ -55,6 +64,29 @@ class LLM:
                 last = f"{type(e).__name__}: {e}"
                 time.sleep(2)
         raise RuntimeError(f"LLM call failed: {last}")
+
+
+PREFERRED_MODELS = ["openai/gpt-oss-120b", "moonshotai/kimi-k2-instruct-0905", "moonshotai/kimi-k2-instruct",
+                    "qwen/qwen3-32b", "meta-llama/llama-4-maverick-17b-128e-instruct", "llama-3.3-70b-versatile",
+                    "meta-llama/llama-4-scout-17b-16e-instruct", "openai/gpt-oss-20b", "gemini-2.5-flash", "gemini-2.0-flash"]
+
+
+def _pick(available: list[str]) -> str | None:
+    for m in PREFERRED_MODELS:
+        if m in available:
+            return m
+    big = [m for m in available if any(t in m for t in ("120b", "70b", "32b")) and not any(t in m for t in ("guard", "whisper", "tts"))]
+    chat = [m for m in available if not any(t in m for t in ("guard", "whisper", "tts", "embed", "audio"))]
+    return (big or chat or [None])[0]
+
+
+def _list_models(cfg, headers) -> list[str]:
+    try:
+        req = urllib.request.Request(cfg.llm_base_url.rstrip("/") + "/models", headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return [m.get("id", "") for m in json.loads(r.read().decode()).get("data", [])]
+    except Exception:
+        return []
 
 
 def parse_json(text: str) -> dict | None:
