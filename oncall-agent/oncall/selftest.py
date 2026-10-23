@@ -467,6 +467,22 @@ def t_llm_loop_with_scripted_model():
 
 
 @test
+def t_mcp_server_lists_and_calls_tools():
+    """REQ: our MCP server exposes the read-only tools (no actions), answers tools/call, and redacts flags."""
+    from .mcp_server import Server
+    srv = Server(FakeDemo(scenario("payment_errors")), CFG)
+    init = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}})
+    assert init["result"]["capabilities"] == {"tools": {}}
+    assert srv.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+    names = {t["name"] for t in srv.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]}
+    assert {"service_red", "find_error_traces", "get_logs"} <= names and not any("restart" in n or "action" in n for n in names)
+    r = srv.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                    "params": {"name": "find_error_traces", "arguments": {"service": "checkout"}}})["result"]
+    assert not r["isError"] and "payment" in r["content"][0]["text"] and "paymentFailure" not in r["content"][0]["text"]
+    assert "error" in srv.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "rm", "arguments": {}}})
+
+
+@test
 def t_record_replay_roundtrip():
     """REQ: telemetry recorded live can be replayed offline with identical answers (repeatable evaluation)."""
     d = tempfile.mkdtemp()
