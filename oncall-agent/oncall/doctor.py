@@ -62,9 +62,10 @@ def find_jaeger(be: Backend, cfg: Config) -> str | None:
         if port.isdigit():
             cands += [f"http://localhost:{port}/jaeger/ui", f"http://localhost:{port}"]
     for c in dict.fromkeys(cands):
-        r = be.http("GET", c.rstrip("/") + "/api/services", timeout=5)
-        if r.get("ok") and isinstance(r.get("json"), dict) and "data" in r["json"]:
-            return c.rstrip("/")
+        for path, key in (("/api/services", "data"), ("/api/v3/services", "services")):
+            r = be.http("GET", c.rstrip("/") + path, timeout=5)
+            if r.get("ok") and isinstance(r.get("json"), dict) and key in r["json"]:
+                return c.rstrip("/")
     return None
 
 
@@ -73,11 +74,18 @@ def verbose(be: Backend, cfg: Config) -> None:
     print("\n----- VERBOSE DIAGNOSTICS (paste all of this to Claude) -----")
     ps = be.run(["docker", "ps", "-a", "--format", "{{.Names}}|{{.Status}}"])
     print("containers:", " ; ".join((ps.get("stdout") or "").split("\n"))[:3000])
-    for url in [cfg.jaeger_url + "/api/services", "http://localhost:8080/jaeger/ui/api/services", cfg.prom_url + "/api/v1/query?query=count(traces_span_metrics_calls_total)"]:
+    for url in [cfg.jaeger_url + "/api/v3/services", "http://localhost:8080/jaeger/ui/api/v3/services", cfg.prom_url + "/api/v1/query?query=count(traces_span_metrics_calls_total)"]:
         r = be.http("GET", url, timeout=5)
         print(f"GET {url} -> status={r.get('status')} err={r.get('error')} body={r.get('text', '')[:200]!r}")
     print("jaeger published port:", (be.run(["docker", "port", "jaeger"]).get("stdout") or "").strip())
     print("working jaeger url:", find_jaeger(be, cfg))
+    from .tools import traces as _t
+    et = _t.find_error_traces(be, cfg, "frontend", "10m", 5)
+    print("find_error_traces(frontend):", et.get("ok"), et.get("summary", "")[:400])
+    r = be.http("GET", cfg.jaeger_url + "/api/v3/traces?" + __import__("urllib.parse").parse.urlencode(
+        {"query.service_name": "frontend", "query.start_time_min": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 300)),
+         "query.start_time_max": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 5)), "query.search_depth": "1"}), timeout=20)
+    print("raw v3 trace sample:", r.get("status"), (r.get("text") or "")[:700])
     for c in ("otel-collector", "jaeger"):
         lg = be.run(["docker", "logs", "--tail", "15", c])
         txt = ((lg.get("stdout") or "") + (lg.get("stderr") or ""))[-2500:]

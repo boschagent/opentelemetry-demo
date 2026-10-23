@@ -118,6 +118,29 @@ def scenario(name: str) -> dict:
     return s
 
 
+def v1_to_otlp(traces_v1):
+    """Test helper: legacy Jaeger traces -> Jaeger v3 OTLP-JSON (what Jaeger 2.21 really returns)."""
+    rs = []
+    for t in traces_v1:
+        for sp in t["spans"]:
+            tags = {x["key"]: x["value"] for x in sp["tags"]}
+            kind = {"server": "SPAN_KIND_SERVER", "client": "SPAN_KIND_CLIENT"}.get(tags.get("span.kind"), "SPAN_KIND_INTERNAL")
+            attrs = [{"key": k, "value": {"stringValue": str(v)}} for k, v in tags.items()
+                     if k not in ("span.kind", "error", "otel.status_code", "otel.status_description")]
+            span = {"traceId": t["traceID"] + "0" * 4, "spanId": sp["spanID"] + "00", "name": sp["operationName"], "kind": kind,
+                    "startTimeUnixNano": "1000000000", "endTimeUnixNano": str(1000000000 + int(sp["duration"] * 1000)),
+                    "attributes": attrs,
+                    "events": [{"name": next((f["value"] for f in lg["fields"] if f["key"] == "event"), ""),
+                                "attributes": [{"key": f["key"], "value": {"stringValue": str(f["value"])}} for f in lg["fields"] if f["key"] != "event"]}
+                               for lg in sp.get("logs", [])],
+                    "status": {"code": "STATUS_CODE_ERROR", "message": tags.get("otel.status_description", "")} if tags.get("error") else {}}
+            if sp["references"]:
+                span["parentSpanId"] = sp["references"][0]["spanID"] + "00"
+            rs.append({"resource": {"attributes": [{"key": "service.name", "value": {"stringValue": sp["processID"]}}]},
+                       "scopeSpans": [{"spans": [span]}]})
+    return {"result": {"resourceSpans": rs}}
+
+
 class FakeDemo(Backend):
     """Answers like the real demo would, for a scripted scenario. Records calls for assertions."""
 
@@ -133,6 +156,16 @@ class FakeDemo(Backend):
             if self.s.get("prom_down"):
                 return {"ok": False, "status": 0, "json": None, "text": "", "error": "URLError: connection refused"}
             return self._prom(q["query"])
+        if self.s.get("jaeger_v3") and u.path.endswith("/api/services"):
+            return {"ok": False, "status": 404, "json": None, "text": "404 page not found\n", "error": ""}
+        if u.path.endswith("/api/v3/services"):
+            return {"ok": True, "status": 200, "json": {"services": [k for k in BASE_RPS] + ["flagd"]}, "text": "", "error": ""}
+        if u.path.endswith("/api/v3/traces"):
+            svc = q.get("query.service_name")
+            data = self.s["err_traces"].get(svc, []) + self.s["traces"].get(svc, [])
+            if not data:
+                return {"ok": False, "status": 404, "json": {"error": {"message": "trace not found"}}, "text": '{"error":{"message":"trace not found"}}', "error": ""}
+            return {"ok": True, "status": 200, "json": v1_to_otlp(data), "text": "", "error": ""}
         if u.path.endswith("/api/services"):
             return {"ok": True, "status": 200, "json": {"data": [k for k in BASE_RPS] + ["flagd"]}, "text": "", "error": ""}
         if u.path.endswith("/api/traces"):
@@ -177,7 +210,8 @@ class FakeDemo(Backend):
                             "State": {"Status": st, "OOMKilled": False, "ExitCode": c.get("exit", 0),
                                       "StartedAt": "2026-10-23T08:00:05.0Z", "FinishedAt": "0001-01-01T00:00:00Z"},
                             "HostConfig": {"NanoCpus": int(lim * 1e9) if lim else 0, "Memory": 0},
-                            "Config": {"Image": f"ghcr.io/open-telemetry/demo:latest-{n}", "Labels": {}}})
+                            "Config": {"Image": f"ghcr.io/open-telemetry/demo:latest-{n}", "Labels": {},
+                                       "Env": ["X" * 200] * (40 if self.s.get("big_inspect") else 0)}})
             return {"ok": True, "stdout": json.dumps(out), "stderr": "", "code": 0}
         if cmd[:2] == ["docker", "stats"]:
             rows = []
@@ -499,6 +533,43 @@ def t_drill_catalog_and_labels():
         assert lab["component"] == "payment" and lab["fault_class"] == "app_errors"
     finally:
         drill.HERE = old
+
+
+@test
+def t_real_jaeger_v3_api():
+    """REQ (from live data): Jaeger 2.21 returns 404 on /api/services; we must auto-switch to /api/v3 and still
+    find the error origin, with flag events redacted."""
+    traces._API.clear()
+    try:
+        sc = scenario("payment_errors")
+        sc["jaeger_v3"] = True
+        be = FakeDemo(sc)
+        assert traces.list_services(be, CFG)["ok"]
+        et = traces.find_error_traces(be, CFG, "checkout")
+        assert et["ok"] and et["data"]["origins"][0][0] == "payment", et["summary"]
+        assert "paymentFailure" not in json.dumps(et)
+        tri = Triage(FakeDemo(sc), CFG, Ledger()).run()
+        assert tri["suspects"][0]["component"] == "payment", tri["suspects"][:2]
+        sc2 = scenario("healthy"); sc2["jaeger_v3"] = True     # v3 404 "trace not found" = no traces, not an error
+        assert traces.find_error_traces(FakeDemo(sc2), CFG, "cart")["ok"]
+    finally:
+        traces._API.clear()
+
+
+@test
+def t_real_big_docker_inspect():
+    """REQ (from live data): `docker inspect` of ~30 real containers is >60 KB and must still parse
+    (a truncation bug hid the stopped cart container)."""
+    sc = scenario("cart_down")
+    sc["big_inspect"] = True
+    be = FakeDemo(sc)
+    from .tools import infra
+    raw = be.run(["docker", "inspect"] + list(sc["containers"]))
+    assert len(raw["stdout"]) > 60000
+    h = infra.container_health(be, CFG)
+    assert any(c["name"] == "cart" and c["status"] == "exited" for c in h["data"]), h["summary"]
+    real = Backend().run([sys.executable, "-c", "print('x' * 300000)"])   # the real subprocess path must not truncate
+    assert len(real["stdout"].strip()) == 300000, len(real["stdout"])
 
 
 @test

@@ -150,7 +150,7 @@ def redact(obj: Any) -> tuple[Any, int]:
 # Backend: the ONLY place that touches the network or docker.
 # --------------------------------------------------------------------------------------
 
-_TIME_PARAMS = {"start", "end", "time", "_", "lookback"}
+_TIME_PARAMS = {"start", "end", "time", "_", "lookback", "query.start_time_min", "query.start_time_max"}
 
 
 def _norm_key(kind: str, target: str) -> str:
@@ -226,7 +226,7 @@ class Backend:
             return self._from_replay("cmd", target)
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
-            res = {"ok": p.returncode == 0, "stdout": p.stdout[-60000:], "stderr": p.stderr[-60000:], "code": p.returncode}
+            res = {"ok": p.returncode == 0, "stdout": p.stdout[-5_000_000:], "stderr": p.stderr[-200_000:], "code": p.returncode}
         except Exception as e:
             res = {"ok": False, "stdout": "", "stderr": f"{type(e).__name__}: {e}", "code": -1}
         self._record("cmd", target, res)

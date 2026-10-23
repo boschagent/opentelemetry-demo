@@ -9,7 +9,10 @@ Key derived signals:
 """
 from __future__ import annotations
 
+import base64
 import json
+import re
+import time
 import urllib.parse
 from collections import Counter, defaultdict
 
@@ -78,7 +81,113 @@ def analyze_trace(trace: dict) -> dict:
     }
 
 
-def _get_traces(be: Backend, cfg: Config, service: str, lookback: str, limit: int, errors_only: bool) -> dict:
+# ---------------------------------------------------------------- Jaeger API v1 (legacy) / v3 (Jaeger >= 2.x)
+# Jaeger 2.21 (the demo's version) answers 404 on the legacy /api/services, so we auto-detect and speak v3,
+# converting its OTLP-JSON into the legacy structure that analyze_trace() understands.
+_API: dict[str, str] = {}
+_KIND = {"1": "internal", "2": "server", "3": "client", "4": "producer", "5": "consumer"}
+
+
+def _api(be: Backend, cfg: Config) -> str:
+    if cfg.jaeger_url in _API:
+        return _API[cfg.jaeger_url]
+    r = be.http("GET", f"{cfg.jaeger_url}/api/services", timeout=8)
+    if r.get("ok") and isinstance(r.get("json"), dict) and "data" in r["json"]:
+        _API[cfg.jaeger_url] = "v1"
+    else:
+        r3 = be.http("GET", f"{cfg.jaeger_url}/api/v3/services", timeout=8)
+        _API[cfg.jaeger_url] = "v3" if r3.get("ok") else "v1"
+    return _API[cfg.jaeger_url]
+
+
+def _secs(lookback: str) -> int:
+    m = re.match(r"(\d+)([smhd]?)", str(lookback))
+    if not m:
+        return 600
+    return int(m.group(1)) * {"s": 1, "m": 60, "h": 3600, "d": 86400, "": 1}[m.group(2)]
+
+
+def _anyval(v: dict):
+    if not isinstance(v, dict):
+        return v
+    for k in ("stringValue", "boolValue", "intValue", "doubleValue"):
+        if k in v:
+            return v[k]
+    if "arrayValue" in v:
+        return [_anyval(x) for x in v["arrayValue"].get("values", [])]
+    return None
+
+
+def _hexid(x: str) -> str:
+    if not x:
+        return ""
+    if re.fullmatch(r"[0-9a-fA-F]+", x):
+        return x.lower()
+    try:
+        return base64.b64decode(x).hex()
+    except Exception:
+        return x
+
+
+def otlp_to_v1(payload: dict) -> list[dict]:
+    """Jaeger v3 / OTLP-JSON  ->  list of legacy Jaeger traces {traceID, spans, processes}. Pure function."""
+    res = payload.get("result", payload) if isinstance(payload, dict) else {}
+    rs_list = res.get("resourceSpans") or res.get("resource_spans") or []
+    traces: dict[str, dict] = {}
+    for rs in rs_list:
+        attrs = {a.get("key"): _anyval(a.get("value")) for a in (rs.get("resource") or {}).get("attributes", [])}
+        svc = str(attrs.get("service.name", "?"))
+        for ss in rs.get("scopeSpans") or rs.get("scope_spans") or []:
+            for sp in ss.get("spans", []):
+                tid = _hexid(sp.get("traceId") or sp.get("trace_id", ""))
+                t = traces.setdefault(tid, {"traceID": tid, "spans": [], "processes": {}})
+                t["processes"][svc] = {"serviceName": svc}
+                kind = str(sp.get("kind", "")).upper().replace("SPAN_KIND_", "")
+                kind = _KIND.get(kind, kind.lower())
+                tags = [{"key": "span.kind", "value": kind}]
+                tags += [{"key": a.get("key"), "value": _anyval(a.get("value"))} for a in sp.get("attributes", [])]
+                st = sp.get("status") or {}
+                if str(st.get("code", "")).upper() in ("2", "STATUS_CODE_ERROR", "ERROR"):
+                    tags += [{"key": "error", "value": True}, {"key": "otel.status_code", "value": "ERROR"},
+                             {"key": "otel.status_description", "value": st.get("message", "")}]
+                logs = [{"timestamp": ev.get("timeUnixNano"),
+                         "fields": [{"key": "event", "value": ev.get("name", "")}] +
+                                   [{"key": a.get("key"), "value": _anyval(a.get("value"))} for a in ev.get("attributes", [])]}
+                        for ev in sp.get("events", [])]
+                try:
+                    dur_us = (int(sp.get("endTimeUnixNano", 0)) - int(sp.get("startTimeUnixNano", 0))) / 1000.0
+                except Exception:
+                    dur_us = 0
+                parent = _hexid(sp.get("parentSpanId") or sp.get("parent_span_id", ""))
+                t["spans"].append({"traceID": tid, "spanID": _hexid(sp.get("spanId") or sp.get("span_id", "")),
+                                   "operationName": sp.get("name", "?"),
+                                   "references": [{"refType": "CHILD_OF", "spanID": parent}] if parent else [],
+                                   "duration": dur_us, "tags": tags, "logs": logs, "processID": svc})
+    return list(traces.values())
+
+
+def _has_error(t: dict) -> bool:
+    return any(_is_err(_tags(s)) for s in t.get("spans", []))
+
+
+def _get_traces(be: Backend, cfg: Config, service: str, lookback: str, limit: int, errors_only: bool):
+    """Returns (http_result_with_v1_json, url). Works against Jaeger v1 or v3 APIs."""
+    if _api(be, cfg) == "v3":
+        now = time.time()
+        fmt = lambda ts: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+        params = {"query.service_name": service, "query.start_time_min": fmt(now - _secs(lookback)),
+                  "query.start_time_max": fmt(now + 5), "query.search_depth": str(max(limit * 5 if errors_only else limit, 20))}
+        url = f"{cfg.jaeger_url}/api/v3/traces?" + urllib.parse.urlencode(params)
+        r = be.http("GET", url, timeout=30)
+        if r.get("status") == 404 and "not found" in (r.get("text") or "").lower() and "trace" in (r.get("text") or "").lower():
+            r = dict(r, ok=True, json={"result": {}})          # v3 returns 404 when no traces match
+        if r.get("ok"):
+            data = otlp_to_v1(r.get("json") or {})
+            if errors_only:
+                data = [t for t in data if _has_error(t)]
+            data = data[:limit]
+            r = dict(r, json={"data": data})
+        return r, url
     params = {"service": service, "lookback": lookback, "limit": str(limit)}
     if errors_only:
         params["tags"] = json.dumps({"error": "true"})
@@ -87,11 +196,13 @@ def _get_traces(be: Backend, cfg: Config, service: str, lookback: str, limit: in
 
 
 def list_services(be: Backend, cfg: Config) -> dict:
-    url = f"{cfg.jaeger_url}/api/services"
+    v3 = _api(be, cfg) == "v3"
+    url = f"{cfg.jaeger_url}/api/v3/services" if v3 else f"{cfg.jaeger_url}/api/services"
     r = be.http("GET", url)
     if not r.get("ok"):
         return {"ok": False, "summary": f"Jaeger unreachable: {r.get('error') or r.get('status')}", "data": None, "source": url}
-    svcs = sorted(s for s in (r["json"] or {}).get("data", []) or [] if s not in DENY_SERVICES)
+    raw = (r["json"] or {}).get("services" if v3 else "data", []) or []
+    svcs = sorted(s for s in raw if s not in DENY_SERVICES)
     return {"ok": True, "summary": "Services with traces: " + ", ".join(svcs), "data": svcs, "source": f"GET {url}"}
 
 
@@ -129,11 +240,12 @@ def find_error_traces(be: Backend, cfg: Config, service: str, lookback: str = "1
 
 
 def get_trace(be: Backend, cfg: Config, trace_id: str) -> dict:
-    url = f"{cfg.jaeger_url}/api/traces/{trace_id}"
+    v3 = _api(be, cfg) == "v3"
+    url = f"{cfg.jaeger_url}/api/v3/traces/{trace_id}" if v3 else f"{cfg.jaeger_url}/api/traces/{trace_id}"
     r = be.http("GET", url)
     if not r.get("ok"):
         return {"ok": False, "summary": f"Jaeger query failed: {r.get('error') or r.get('status')}", "data": None, "source": url}
-    data = (r["json"] or {}).get("data", []) or []
+    data = otlp_to_v1(r["json"] or {}) if v3 else ((r["json"] or {}).get("data", []) or [])
     if not data:
         return {"ok": False, "summary": "trace not found", "data": None, "source": url}
     a = analyze_trace(data[0])
