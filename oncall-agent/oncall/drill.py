@@ -72,16 +72,28 @@ def setup(max_tries: int = 30) -> int:
         return 1
     say("STEP 3/3  Waiting for telemetry to flow (checks every 30s, up to 10 min)")
     cfg, be = Config.from_env(), Backend()
-    for _ in range(20):
+    for i in range(20):
+        found = doctor.find_jaeger(be, cfg)
+        if found:
+            cfg.jaeger_url = found
         res = doctor.check(be, cfg)
         bad = [n for n, ok, _ in res if not ok and "optional" not in n.lower() and "Action API" not in n]
-        if not bad:
+        must = [n for n in bad if n in ("docker reachable", "Prometheus has span metrics")]
+        if not bad or (not must and i >= 3):   # Prometheus works: good enough to proceed, warn about the rest
             break
         print(f"  not ready yet: {bad}")
         time.sleep(30)
     else:
-        print("Telemetry never became ready. Run: python -m oncall.doctor   and send the output to Claude.")
+        doctor.verbose(be, cfg)
+        print("Telemetry never became ready. Send Claude everything printed above.")
         return 1
+    if bad:
+        print(f"  WARNING: continuing without {bad} (agent still works, with less evidence). Diagnostics:")
+        doctor.verbose(be, cfg)
+    if found and found != Config.from_env().jaeger_url:
+        with open(os.path.join(HERE, "oncall.env"), "a", encoding="utf-8") as f:
+            f.write(f"\nONCALL_JAEGER_URL={found}\n")
+        print(f"  Saved working Jaeger URL {found} to oncall.env")
     print("  Demo healthy. Recording baseline (what 'normal' looks like) ...")
     doctor.record_baseline(be, cfg)
     say("SETUP DONE. Next:  python -m oncall.drill run payment     (or: python -m oncall.drill all)")

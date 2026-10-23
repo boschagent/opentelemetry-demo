@@ -39,6 +39,10 @@ def check(be: Backend, cfg: Config) -> list[tuple[str, bool, str]]:
     out.append(("Prometheus has span metrics", bool(ok_red),
                 f"Prometheus at {cfg.prom_url} not answering or empty. Is the 'prometheus' container running? "
                 f"(plain 'docker compose up -d' does NOT start it; use: {COMPOSE}). Metrics need ~2-3 min after start."))
+    found = find_jaeger(be, cfg)
+    if found and found != cfg.jaeger_url:
+        print(f"(Jaeger found at {found} - add  ONCALL_JAEGER_URL={found}  to oncall.env)")
+        cfg.jaeger_url = found
     js = traces.list_services(be, cfg)
     out.append(("Jaeger has traces", bool(js.get("ok") and js.get("data")),
                 f"Jaeger at {cfg.jaeger_url} not answering. Open http://localhost:8080/jaeger/ui in a browser; needs the jaeger container."))
@@ -47,6 +51,37 @@ def check(be: Backend, cfg: Config) -> list[tuple[str, bool, str]]:
     out.append(("LLM configured (optional)", bool(cfg.llm_base_url and cfg.llm_model and cfg.llm_api_key) or "localhost" in cfg.llm_base_url,
                 "Optional. Copy oncall.env.example to oncall.env and paste a key (see README). Without it use --no-llm."))
     return out
+
+
+def find_jaeger(be: Backend, cfg: Config) -> str | None:
+    """Try the proxy URL, then the jaeger container's published port. Returns a working base URL or None."""
+    cands = [cfg.jaeger_url, "http://localhost:8080/jaeger/ui", "http://localhost:16686/jaeger/ui", "http://localhost:16686"]
+    p = be.run(["docker", "port", "jaeger", "16686"])
+    for line in (p.get("stdout") or "").splitlines():
+        port = line.strip().rsplit(":", 1)[-1]
+        if port.isdigit():
+            cands += [f"http://localhost:{port}/jaeger/ui", f"http://localhost:{port}"]
+    for c in dict.fromkeys(cands):
+        r = be.http("GET", c.rstrip("/") + "/api/services", timeout=5)
+        if r.get("ok") and isinstance(r.get("json"), dict) and "data" in r["json"]:
+            return c.rstrip("/")
+    return None
+
+
+def verbose(be: Backend, cfg: Config) -> None:
+    """Dump everything Claude needs to debug the setup in ONE paste."""
+    print("\n----- VERBOSE DIAGNOSTICS (paste all of this to Claude) -----")
+    ps = be.run(["docker", "ps", "-a", "--format", "{{.Names}}|{{.Status}}"])
+    print("containers:", " ; ".join((ps.get("stdout") or "").split("\n"))[:3000])
+    for url in [cfg.jaeger_url + "/api/services", "http://localhost:8080/jaeger/ui/api/services", cfg.prom_url + "/api/v1/query?query=count(traces_span_metrics_calls_total)"]:
+        r = be.http("GET", url, timeout=5)
+        print(f"GET {url} -> status={r.get('status')} err={r.get('error')} body={r.get('text', '')[:200]!r}")
+    print("jaeger published port:", (be.run(["docker", "port", "jaeger"]).get("stdout") or "").strip())
+    print("working jaeger url:", find_jaeger(be, cfg))
+    for c in ("otel-collector", "jaeger"):
+        lg = be.run(["docker", "logs", "--tail", "15", c])
+        txt = ((lg.get("stdout") or "") + (lg.get("stderr") or ""))[-2500:]
+        print(f"--- last log lines of {c} ---\n{txt}")
 
 
 def record_baseline(be: Backend, cfg: Config, samples: int = 3) -> dict:
@@ -75,12 +110,15 @@ def record_baseline(be: Backend, cfg: Config, samples: int = 3) -> dict:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--baseline", action="store_true")
+    ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args(argv)
     cfg, be = Config.from_env(), Backend()
     res = check(be, cfg)
     for name, ok, fix in res:
         print(f"[{'OK ' if ok else 'FIX'}] {name}" + ("" if ok else f"\n      -> {fix}"))
     hard_fail = [n for n, ok, _ in res if not ok and "optional" not in n.lower()]
+    if a.verbose or hard_fail:
+        verbose(be, cfg)
     if a.baseline:
         if hard_fail:
             print("\nNot recording a baseline until the problems above are fixed.")
