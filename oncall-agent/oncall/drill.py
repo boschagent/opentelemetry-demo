@@ -152,6 +152,9 @@ def run_one(name: str, execute: bool = True, wait: int = 180) -> dict | None:
     cfg.dry_run = not execute
     ensure_action_api(cfg)
     how, cmd, undo, comp, cls = CATALOG[name]
+    if not os.path.exists(cfg.baseline_file):
+        print("  No healthy baseline yet - recording it now (system must be healthy at this moment) ...")
+        doctor.record_baseline(Backend(), cfg)
     say(f"INCIDENT '{name}'\nHUMAN: {how}")
     if cmd:
         inject(cmd)

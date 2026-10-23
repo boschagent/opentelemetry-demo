@@ -29,7 +29,8 @@ class LLM:
         url = self.cfg.llm_base_url.rstrip("/") + "/chat/completions"
         body = {"model": self.cfg.llm_model, "messages": messages, "temperature": temperature,
                 "response_format": {"type": "json_object"}}
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json",  # explicit UA: Groq/Cloudflare blocks Python's default (HTTP 403 code 1010)
+                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) oncall-agent/1.0"}
         if self.cfg.llm_api_key:
             headers["Authorization"] = f"Bearer {self.cfg.llm_api_key}"
         last = ""

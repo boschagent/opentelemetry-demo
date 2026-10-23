@@ -105,6 +105,9 @@ def scenario(name: str) -> dict:
         err = "\n".join(f"2026-10-23T10:0{i}:00Z error: Payment request failed. Invalid token." for i in range(9))
         s["logs"] = {"payment": err + "\n" + err, "checkout": err.replace("Payment request", "failed to charge card:"),
                      "frontend": err.replace("Payment request", "checkout failed:")}
+    elif name == "payment_traces_only":   # live run 17:00: metrics showed nothing yet, traces did
+        s.update(scenario("payment_errors"))
+        s["err"] = {}
     elif name == "combo":
         s.update(scenario("cart_down"))
         s["stats"]["ad"] = {"cpu": 180.0, "mem": 40.0}
@@ -237,6 +240,7 @@ EXPECT = {  # scenario -> (top component, fault class)
     "combo": ("cart", "service_down"),
     "valkey_paused": ("valkey-cart", "service_down"),
     "payment_logs_only": ("payment", "app_errors"),
+    "payment_traces_only": ("payment", "app_errors"),
 }
 TESTS = []
 
@@ -570,6 +574,26 @@ def t_real_big_docker_inspect():
     assert any(c["name"] == "cart" and c["status"] == "exited" for c in h["data"]), h["summary"]
     real = Backend().run([sys.executable, "-c", "print('x' * 300000)"])   # the real subprocess path must not truncate
     assert len(real["stdout"].strip()) == 300000, len(real["stdout"])
+
+
+@test
+def t_llm_sends_browser_user_agent():
+    """REQ (from live data): Groq/Cloudflare returns HTTP 403 code 1010 for Python's default User-Agent."""
+    import urllib.request
+    seen = {}
+
+    class R:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return json.dumps({"choices": [{"message": {"content": "{}"}}], "usage": {"total_tokens": 1}}).encode()
+    orig = urllib.request.urlopen
+    urllib.request.urlopen = lambda req, timeout=0: (seen.update(req.headers), R())[1]
+    try:
+        brain.LLM(Config(llm_base_url="http://x", llm_model="m", llm_api_key="k")).chat([{"role": "user", "content": "hi"}])
+    finally:
+        urllib.request.urlopen = orig
+    ua = {k.lower(): v for k, v in seen.items()}.get("user-agent", "")
+    assert ua.startswith("Mozilla/5.0") and "Python-urllib" not in ua, ua
 
 
 @test

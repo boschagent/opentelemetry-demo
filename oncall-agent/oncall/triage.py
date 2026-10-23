@@ -204,6 +204,11 @@ class Triage:
         edge = {"frontend", "frontend-proxy"}
         probe = [r["service"] for r in erroring if r["service"] not in edge][:2] + \
                 [r["service"] for r in erroring if r["service"] in edge][:1]
+        # Always look at the two busiest entry points in traces too: metrics arrive ~60s late and may be
+        # sparse, traces are near real-time (lesson from the live payment run, 2026-10-23 17:00).
+        for always in ("checkout", "frontend"):
+            if always not in probe:
+                probe.append(always)
         origins, orphans, ev_ids, seen = {}, {}, [], set()
         for svc in probe:
             et = self._call("find_error_traces", traces.find_error_traces, service=svc, lookback="10m", limit=20)
@@ -262,8 +267,14 @@ class Triage:
 
 def summarize(tri: dict) -> str:
     if tri["healthy"]:
-        return "Triage: no anomaly crossed thresholds." + (f" (tool errors: {tri['tool_errors']})" if tri["tool_errors"] else "")
+        red = [r for r in tri.get("signals", {}).get("red", []) if r["error_rate"] > 0][:6]
+        return "Triage: no anomaly crossed thresholds." + (" Metrics: " + "; ".join(
+            f"{r['service']} err={r['error_rate']:.1%}" for r in red) if red else "") + (f" (tool errors: {tri['tool_errors']})" if tri["tool_errors"] else "")
     lines = ["Deterministic triage - ranked suspects:"]
+    red = [r for r in tri.get("signals", {}).get("red", []) if r["error_rate"] > 0 or (r["p95_ratio"] or 0) > 1.3][:6]
+    if red:
+        lines.insert(0, "Metrics (now vs baseline): " + "; ".join(
+            f"{r['service']} err={r['error_rate']:.1%}(base {r['error_rate_base']:.1%}) p95x{r['p95_ratio']}" for r in red))
     for i, s in enumerate(tri["suspects"][:6], 1):
         lines.append(f"{i}. {s['component']} [{s['fault_class']}] score={s['score']} evidence={s['evidence']}")
         for r in s["rationale"][:3]:
