@@ -56,6 +56,8 @@ class Config:
     dry_run: bool = True               # SAFE DEFAULT: nothing changes unless --execute
     kill_file: str = "KILL"
     baseline_file: str = "baseline.json"
+    approve_mode: str = "terminal"     # "terminal" (type yes) or "web" (approval page of the Action API)
+    approval_timeout_s: float = 600.0  # no decision in time = rejected
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -162,6 +164,9 @@ def _norm_key(kind: str, target: str) -> str:
     return hashlib.sha1(f"{kind}|{target}".encode()).hexdigest()[:16]
 
 
+_REPLAY_CACHE: dict[str, tuple] = {}     # bundle path -> ((mtime, size), {key: [results]}) - parse each bundle once
+
+
 class Backend:
     def __init__(self, mode: str = "live", bundle: str | None = None):
         assert mode in ("live", "record", "replay"), mode
@@ -171,11 +176,18 @@ class Backend:
             assert bundle, "record/replay need a bundle directory"
             os.makedirs(bundle, exist_ok=True)
         if mode == "replay":
-            path = os.path.join(bundle, "calls.jsonl")
-            with open(path, encoding="utf-8") as f:
-                for line in f:
-                    r = json.loads(line)
-                    self._replay.setdefault(r["key"], []).append(r["result"])
+            path = os.path.abspath(os.path.join(bundle, "calls.jsonl"))
+            st = os.stat(path)
+            cached = _REPLAY_CACHE.get(path)
+            if cached is None or cached[0] != (st.st_mtime, st.st_size):
+                recs: dict[str, list[Any]] = {}
+                with open(path, encoding="utf-8") as f:
+                    for line in f:
+                        r = json.loads(line)
+                        recs.setdefault(r["key"], []).append(r["result"])
+                _REPLAY_CACHE[path] = cached = ((st.st_mtime, st.st_size), recs)
+            # each replay consumes its own copy of the per-key queues (the recorded results themselves are read-only)
+            self._replay = {k: list(v) for k, v in cached[1].items()}
 
     def _record(self, kind: str, target: str, result: Any) -> None:
         if self.mode != "record":
@@ -185,10 +197,18 @@ class Backend:
             f.write(json.dumps(rec) + "\n")
 
     def _from_replay(self, kind: str, target: str) -> Any:
+        # robustness experiments (eval/run_eval.py --degrade docker,jaeger,prom): pretend a data source is gone
+        deg = os.environ.get("ONCALL_DEGRADE", "")
+        if deg and ((kind == "cmd" and "docker" in deg) or (kind == "http" and (
+                ("jaeger" in deg and ("/jaeger" in target or ":16686" in target)) or ("prom" in deg and ":9090" in target)))):
+            return {"ok": False, "status": 0, "json": None, "text": "", "stdout": "", "stderr": "degraded", "code": -1,
+                    "error": f"source unavailable (experiment: {deg})"}
         vals = self._replay.get(_norm_key(kind, target))
         if not vals:
             return {"ok": False, "error": f"replay: no recording for {kind} {target[:120]}"}
-        return vals[-1]
+        # serve recordings in the order they happened (triage saw the broken state, verify saw the healed one);
+        # once used up, keep answering with the last one
+        return vals.pop(0) if len(vals) > 1 else vals[0]
 
     def http(self, method: str, url: str, body: dict | None = None, timeout: float = 15.0) -> dict:
         """Returns {"ok": bool, "status": int, "json": obj|None, "text": str, "error": str}"""

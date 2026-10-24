@@ -50,8 +50,31 @@ def plan_action(diag: dict) -> dict | None:
     return None
 
 
-def ask_approval(diag: dict, plan: dict, cfg: Config, input_fn=input, out=print) -> dict:
-    """Show diagnosis + evidence + plan; ONLY the exact word 'yes' approves."""
+def _api(cfg: Config, method: str, path: str, body: dict | None = None, timeout: float = 10) -> tuple[int, dict]:
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(cfg.action_api_url + path, data=json.dumps(body).encode() if body is not None else None,
+                                 method=method, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read().decode())
+        except Exception:
+            return e.code, {"ok": False}
+    except Exception as e:
+        return 0, {"ok": False, "error": str(e)}
+
+
+def ask_approval(diag: dict, plan: dict, cfg: Config, input_fn=input, out=print, sleep=time.sleep) -> dict:
+    """Show diagnosis + evidence + plan, register it as a PROPOSAL at the Action API (so the approval is bound to
+    exactly this action), then wait for a human: the exact word 'yes' in the terminal, or Approve on the web page."""
+    approver = os.environ.get("USERNAME") or os.environ.get("USER") or "human"
+    code, pr = _api(cfg, "POST", "/proposals", {"action": plan["action"], "params": plan["params"], "reason": plan["reason"],
+                                               "dry_run": cfg.dry_run, "diagnosis": {k: diag.get(k) for k in (
+                                                   "component", "fault_class", "summary", "confidence", "evidence")}})
+    pid = pr.get("id") if code == 200 else None
     out("\n" + "=" * 78)
     out("APPROVAL REQUIRED")
     out(f"Root cause : {diag['component']} [{diag['fault_class']}]  confidence={diag['confidence']}")
@@ -61,6 +84,21 @@ def ask_approval(diag: dict, plan: dict, cfg: Config, input_fn=input, out=print)
     out(f"Plan       : {plan['action']} {json.dumps(plan['params'])}")
     out(f"Reason     : {plan['reason']}")
     out(f"Mode       : {'DRY-RUN (nothing will change)' if cfg.dry_run else 'EXECUTE (will change the system)'}")
+    if pid:
+        out(f"Proposal   : {pid}  (approval page: {cfg.action_api_url}/)")
+    if cfg.approve_mode == "web" and pid:
+        out(f"Waiting up to {int(cfg.approval_timeout_s)}s for a decision on {cfg.action_api_url}/ ...  (KILL file aborts)")
+        out("=" * 78)
+        deadline = time.time() + cfg.approval_timeout_s
+        while time.time() < deadline:
+            check_kill(cfg)
+            _, st = _api(cfg, "GET", f"/proposals/{pid}")
+            p = st.get("proposal") or {}
+            if p.get("status") in ("approved", "rejected"):
+                return {"approved": p["status"] == "approved", "answer": f"web:{p['status']}", "approver": p.get("approver"),
+                        "ts": time.time(), "proposal": pid, "channel": "web"}
+            sleep(2)
+        return {"approved": False, "answer": "timeout", "approver": None, "ts": time.time(), "proposal": pid, "channel": "web"}
     out("Type 'yes' to approve, anything else rejects.  (Create a file named KILL to abort the agent.)")
     out("=" * 78)
     try:
@@ -68,18 +106,23 @@ def ask_approval(diag: dict, plan: dict, cfg: Config, input_fn=input, out=print)
     except EOFError:
         ans = ""
     approved = ans == "yes"
-    return {"approved": approved, "answer": ans, "approver": os.environ.get("USERNAME") or os.environ.get("USER") or "human",
-            "ts": time.time()}
+    approver = os.environ.get("USERNAME") or os.environ.get("USER") or "human"   # read after the answer (UI sets the name)
+    if pid:
+        _api(cfg, "POST", f"/proposals/{pid}/decide", {"decision": "approve" if approved else "reject",
+                                                      "approver": approver, "confirm": ans})
+    return {"approved": approved, "answer": ans, "approver": approver, "ts": time.time(), "proposal": pid,
+            "channel": os.environ.get("ONCALL_APPROVAL_CHANNEL", "terminal")}
 
 
-def call_action(be: Backend, cfg: Config, plan: dict, approver: str) -> dict:
+def call_action(be: Backend, cfg: Config, plan: dict, approver: str, proposal: str | None = None) -> dict:
     if plan["action"] not in RUNBOOK:
         return {"ok": False, "error": "action not in runbook allowlist (refused client-side)"}
     check_kill(cfg)
     import urllib.request
     body = dict(plan["params"], dry_run=cfg.dry_run)
     req = urllib.request.Request(f"{cfg.action_api_url}/actions/{plan['action']}", data=json.dumps(body).encode(),
-                                 method="POST", headers={"Content-Type": "application/json", "X-Approved-By": approver})
+                                 method="POST", headers={"Content-Type": "application/json", "X-Approved-By": approver or "",
+                                                          **({"X-Proposal-Id": proposal} if proposal else {})})
     try:
         with urllib.request.urlopen(req, timeout=120) as r:
             return json.loads(r.read().decode())
@@ -100,6 +143,16 @@ def health_check(be: Backend, cfg: Config, diag: dict) -> dict:
     row = next((c for c in h.get("data") or [] if c["name"] == comp), None)
     if row is not None:
         checks["container_running"] = row["status"] == "running"
+    if cls in ("memory_pressure", "high_cpu", "oom", "cpu_starved"):
+        # a restart always looks healthy for a minute; also require the resource itself to be back near its baseline
+        st = next((x for x in infra.container_stats(be, cfg).get("data") or [] if x["name"] == comp), None)
+        if st is not None:
+            from .triage import load_baseline
+            b = load_baseline(cfg.baseline_file).get("stats", {}).get(comp, {})
+            if cls in ("memory_pressure", "oom"):
+                checks["memory_ok"] = st["mem_pct"] < max(90.0, b.get("mem_pct", 0) + 3)
+            else:
+                checks["cpu_ok"] = st["cpu_pct"] < max(50.0, b.get("cpu_pct", 0) * 2 + 10)
     if cls == "traffic_surge":
         red = service_red(be, cfg)
         fe = next((r for r in red.get("data") or [] if r["service"] in ("frontend-proxy", "frontend")), None)

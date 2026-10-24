@@ -255,6 +255,65 @@ def get_trace(be: Backend, cfg: Config, trace_id: str) -> dict:
     return {"ok": True, "summary": s, "data": a, "source": f"GET {url}"}
 
 
+_DB_NODE = {"redis": "valkey", "valkey": "valkey", "postgresql": "db", "postgres": "db", "kafka": "kafka"}
+
+
+def edges_from_traces(trace_list: list[dict], known: set[str] | None = None) -> dict[tuple[str, str], int]:
+    """Pure function: who calls whom, learned from real traces. A span whose parent belongs to another service
+    is a call parent.service -> span.service. A client span to an uninstrumented dependency (database, cache,
+    queue) becomes an edge to that container when its peer address / db.system matches a known name."""
+    known = known or set()
+    out: dict[tuple[str, str], int] = Counter()
+    for t in trace_list:
+        procs = {pid: p.get("serviceName", "?") for pid, p in t.get("processes", {}).items()}
+        spans = {s["spanID"]: s for s in t.get("spans", [])}
+        has_server_child = set()
+        for s in spans.values():
+            for ref in s.get("references", []) or []:
+                p = spans.get(ref.get("spanID"))
+                if p is None:
+                    continue
+                ps, cs = procs.get(p.get("processID"), "?"), procs.get(s.get("processID"), "?")
+                if ps != cs and "?" not in (ps, cs):
+                    out[(ps, cs)] += 1
+                    has_server_child.add(p["spanID"])
+        for s in spans.values():
+            tg = _tags(s)
+            if str(tg.get("span.kind", "")).lower() not in ("client", "producer") or s["spanID"] in has_server_child:
+                continue
+            src = procs.get(s.get("processID"), "?")
+            peer = str(tg.get("server.address") or tg.get("net.peer.name") or tg.get("peer.service") or "").lower()
+            dbs = str(tg.get("db.system") or tg.get("db.system.name") or tg.get("messaging.system") or "").lower()
+            tgt = None
+            for k in sorted(known, key=len, reverse=True):
+                if k and k != src and peer and (peer == k or peer.startswith(k)):
+                    tgt = k
+                    break
+            if tgt is None and dbs:
+                hint = _DB_NODE.get(dbs, dbs)
+                tgt = next((k for k in sorted(known) if hint in k and k != src), None)
+            if tgt:
+                out[(src, tgt)] += 1
+    return dict(out)
+
+
+def service_graph(be: Backend, cfg: Config, lookback: str = "15m", entry: tuple = ("frontend-proxy", "frontend", "checkout"),
+                  known: set[str] | None = None, limit: int = 20) -> dict:
+    """Learn the live dependency graph from a sample of recent traces (normal ones, not only errors)."""
+    traces_all, urls = [], []
+    for svc in entry:
+        r, url = _get_traces(be, cfg, svc, lookback, limit, False)
+        urls.append(url)
+        if r.get("ok"):
+            traces_all += (r["json"] or {}).get("data", []) or []
+    if not traces_all:
+        return {"ok": False, "summary": "no traces to learn the call graph from", "data": None, "source": "\n".join(urls)}
+    edges = edges_from_traces(traces_all, known)
+    lines = [f"{a} -> {b} ({n} calls)" for (a, b), n in sorted(edges.items(), key=lambda kv: -kv[1])[:40]]
+    return {"ok": True, "summary": f"Learned {len(edges)} call edges from {len(traces_all)} traces:\n" + "\n".join(lines),
+            "data": [[a, b, n] for (a, b), n in edges.items()], "source": "\n".join(f"GET {u}" for u in urls)}
+
+
 def latency_edges(be: Backend, cfg: Config, service: str = "frontend", lookback: str = "5m", limit: int = 30) -> dict:
     """Aggregate caller->callee network gap over recent traces. Big gap + normal server time = network problem."""
     r, url = _get_traces(be, cfg, service, lookback, limit, False)

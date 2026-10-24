@@ -1,0 +1,335 @@
+{
+  "incident_id": "INC-20261024-010916-quote_down",
+  "status": "diagnosed",
+  "detected_at": "2026-10-24T01:09:16",
+  "alert": "practice incident 'quote_down' (alert: on-call page)",
+  "root_cause": {
+    "component": "quote",
+    "fault_class": "service_down",
+    "summary": "quote: service down. container quote status=exited exit_code=0 (also dependency_unreachable) 20 failed calls from shipping to quote never reached a quote server span",
+    "alternatives": [
+      "shipping [app_errors] score=0.85",
+      "image-provider [app_errors] score=0.5",
+      "frontend [app_errors] score=0.35"
+    ],
+    "secondary": [
+      {
+        "component": "shipping",
+        "fault_class": "app_errors"
+      }
+    ],
+    "mode": "triage-only",
+    "notes": [
+      "few-shot memory agrees (0.97 similar past incident was service_down)"
+    ]
+  },
+  "confidence": 0.88,
+  "evidence": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "source": "docker ps -a; docker inspect <all>",
+      "observation": "container quote status=exited exit_code=0; (also dependency_unreachable) 20 failed calls from shipping to quote never reached a quote server span"
+    },
+    {
+      "id": "ev-009",
+      "tool": "find_error_traces",
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T19%3A29%3A40Z&query.start_time_max=2026-10-23T19%3A39%3A45Z&query.search_depth=100",
+      "observation": "container quote status=exited exit_code=0; (also dependency_unreachable) 20 failed calls from shipping to quote never reached a quote server span"
+    }
+  ],
+  "proposed_action": {
+    "action": "restart_service",
+    "params": {
+      "service": "quote"
+    },
+    "reason": "quote diagnosed as service_down; restart is the allowlisted remedy (clears leaked memory/caches, crashed processes, wedged connections; restarts stopped containers)."
+  },
+  "approval": {
+    "approved": true,
+    "answer": "yes",
+    "approver": "Amrith",
+    "ts": 1792784380.7665675,
+    "proposal": "d1e4bd9c",
+    "channel": "terminal"
+  },
+  "actions_taken": [
+    {
+      "ts": 1792784381.1804523,
+      "action": "restart_service",
+      "params": {
+        "service": "quote"
+      },
+      "dry_run": true,
+      "response": {
+        "ok": true,
+        "dry_run": true,
+        "would_run": "docker start quote",
+        "current_state": "exited"
+      }
+    }
+  ],
+  "verification": null,
+  "timeline": [
+    {
+      "time": "2026-10-24T01:09:16",
+      "event": "alert received: practice incident 'quote_down' (alert: on-call page)"
+    },
+    {
+      "time": "2026-10-24T01:09:40",
+      "event": "triage: 4 suspects, top=quote/service_down"
+    },
+    {
+      "time": "2026-10-24T01:09:40",
+      "event": "diagnosis: quote [service_down] conf=0.88"
+    },
+    {
+      "time": "2026-10-24T01:09:40",
+      "event": "human approval: APPROVED"
+    },
+    {
+      "time": "2026-10-24T01:09:41",
+      "event": "action restart_service -> ok=True dry_run=True"
+    }
+  ],
+  "prevention": [
+    "Add a container liveness/readiness check with auto-restart policy and an alert on 'container not running' for >1 min."
+  ],
+  "reviewer": null,
+  "escalation_reason": "dry-run: no change was made",
+  "rejected_evidence": [],
+  "memory_hits": [
+    {
+      "incident_id": "INC-20261024-005637-db_down",
+      "component": "astronomy-db",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "astronomy-db: service down. container astronomy-db status=exited exit_code=0"
+    },
+    {
+      "incident_id": "INC-20261024-004255-catalog_down",
+      "component": "product-catalog",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "product-catalog: service down. container product-catalog status=exited exit_code=137 (also dependency_unreachable) 33 failed calls from frontend to product-catalog never reached a product-catalog serv"
+    },
+    {
+      "incident_id": "INC-20261024-003209-payment_paused",
+      "component": "payment",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "payment: service down. container payment status=paused exit_code=0 (also memory_pressure) graph RCA: payment ranks #1 (share 53%); own anomaly mem 73.1445->81.9392 (z=8.8)"
+    }
+  ],
+  "fewshot": [
+    {
+      "similarity": 0.97,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "resolved (verified)",
+      "source": "INC-20261023-224228-cart_down",
+      "shape": "cls:service_down, cls:dependency_unreachable, instrumented, combined"
+    }
+  ],
+  "llm": {
+    "model": null,
+    "calls": 0,
+    "tokens": 0
+  },
+  "investigation_transcript": [],
+  "triage": [
+    {
+      "component": "quote",
+      "fault_class": "service_down",
+      "score": 0.963,
+      "rationale": [
+        "container quote status=exited exit_code=0",
+        "(also dependency_unreachable) 20 failed calls from shipping to quote never reached a quote server span"
+      ],
+      "evidence": [
+        "ev-001",
+        "ev-009"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "shipping",
+      "fault_class": "app_errors",
+      "score": 0.85,
+      "rationale": [
+        "graph RCA: shipping ranks #1 (share 72%); own anomaly err 0.0->1.0 (z=100.0), p95 99.2857->4850.0 (z=65.0); its callers broke after it: ",
+        "(also latency_degradation) shipping p95 4850.0ms vs baseline 49.8ms (x97.32)"
+      ],
+      "evidence": [
+        "ev-013",
+        "ev-003"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "image-provider",
+      "fault_class": "app_errors",
+      "score": 0.5,
+      "rationale": [
+        "image-provider logged 10 error/warn lines in the last 3 min (baseline 0)"
+      ],
+      "evidence": [
+        "ev-006"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "frontend",
+      "fault_class": "app_errors",
+      "score": 0.35,
+      "rationale": [
+        "frontend logged 69 error/warn lines in the last 3 min (baseline 3)"
+      ],
+      "evidence": [
+        "ev-005"
+      ],
+      "suggested_action": "restart_service"
+    }
+  ],
+  "ledger": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "args": {},
+      "source": "docker ps -a; docker inspect <all>",
+      "summary": "23 demo containers (compose project 'opentelemetry-demo'); 22 running normally. Ignored 3 unrelated containers.\n  !! quote: status=exited health=unhealthy restarts=0 oom=False exit=0 finished_at=2026-10-23T19:35:14.265840354Z",
+      "ts": 1792784357.781632
+    },
+    {
+      "id": "ev-002",
+      "tool": "container_stats",
+      "args": {},
+      "source": "docker stats --no-stream",
+      "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=416.1% mem=83.81% (16.76MiB / 20MiB)\nfrontend: cpu=28.38% mem=94.91% (237.3MiB / 250MiB)\nopensearch: cpu=5.71% mem=91.51% (937MiB / 1GiB)\nad: cpu=11.75% mem=89.11% (267.3MiB / 300MiB)\nshipping: cpu=26.28% mem=74.14% (14.83MiB / 20MiB)\npayment: cpu=3.01% mem=72.77% (101.9MiB / 140MiB)\ncheckout: cpu=70.79% mem=71.07% (14.21MiB / 20MiB)\nfrontend-proxy: cpu=7.21% mem=70.94% (63.84MiB / 90MiB)\nemail: cpu=0.07% mem=67.84% (67.84MiB / 100MiB)\nastronomy-db: cpu=23.3% mem=65.14% (52.11MiB / 80MiB)\ngrafana: cpu=7.74% mem=65.07% (325.4MiB / 500MiB)\nvalkey-cart: cpu=0.59% mem=57.56% (11.51MiB / 20MiB)\nrecommendation: cpu=14.83% mem=56.97% (284.8MiB / 500MiB)\nprometheus: cpu=1.27% mem=50.42% (100.8MiB / 200MiB)\nload-generator: cpu=8.51% mem=47.81% (717.2MiB / 1.465GiB)",
+      "ts": 1792784365.954385
+    },
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "args": {},
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "summary": "Service RED, worst first:\nshipping: rps=0.158 (base 0.175), err=100.0% (base 0.0%), p95=4850.0ms (base 49.8ms)\ncheckout: rps=0.042 (base 0.05), err=100.0% (base 0.0%), p95=9750.0ms (base 13500.0ms)\nfrontend: rps=10.444 (base 10.494), err=1.8% (base 0.0%), p95=1118.9ms (base 667.1ms)\nfrontend-proxy: rps=10.527 (base 10.028), err=0.4% (base 0.0%), p95=881.4ms (base 589.6ms)\nad: rps=0.325 (base 0.25), err=0.0% (base 0.0%), p95=47.1ms (base 30.0ms)\nimage-provider: rps=2.876 (base 2.501), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.2 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ncurrency: rps=0.625 (base 0.892), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nproduct-catalog: rps=3.884 (base 4.118), err=0.0% (base 0.0%), p95=691.9ms (base 716.8ms)\ncart: rps=1.175 (base 1.059), err=0.0% (base 0.0%), p95=38.5ms (base 41.4ms)\nrecommendation: rps=0.6 (base 0.659), err=0.0% (base 0.0%), p95=693.3ms (base 752.5ms)\nemail: rps=0.0 (base 0.05), err=0.0% (base 0.0%), p95=Nonems (base 47.0ms)\npayment: rps=0.0 (base 0.05), err=0.0% (base 0.0%), p95=Nonems (base 38.0ms)\nquote: rps=0.0 (base 0.125), err=0.0% (base 0.0%), p95=Nonems (base 20.0ms)",
+      "ts": 1792784366.3534257
+    },
+    {
+      "id": "ev-004",
+      "tool": "service_graph",
+      "args": {
+        "lookback": "15m"
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend-proxy&query.start_time_min=2026-10-23T19%3A24%3A26Z&query.start_time_max=2026-10-23T19%3A39%3A31Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T19%3A24%3A26Z&query.start_time_max=2026-10-23T19%3A39%3A31Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-23T19%3A24%3A26Z&query.start_time_max=2026-10-23T19%3A39%3A31Z&query.search_depth=20",
+      "summary": "Learned 21 call edges from 60 traces:\ncart -> valkey-cart (178 calls)\nfrontend-proxy -> frontend (112 calls)\nload-generator -> frontend-proxy (89 calls)\nproduct-catalog -> astronomy-db (76 calls)\nfrontend -> cart (70 calls)\nfrontend -> product-catalog (51 calls)\ncheckout -> currency (37 calls)\ncheckout -> cart (29 calls)\ncheckout -> product-catalog (28 calls)\ncheckout -> shipping (28 calls)\nfrontend -> checkout (19 calls)\nshipping -> quote (19 calls)\ncheckout -> email (9 calls)\ncheckout -> payment (9 calls)\nfrontend-web -> frontend-proxy (4 calls)\nfrontend -> currency (4 calls)\nrecommendation -> product-catalog (1 calls)\nfrontend -> recommendation (1 calls)",
+      "ts": 1792784367.0168486
+    },
+    {
+      "id": "ev-005",
+      "tool": "get_logs",
+      "args": {
+        "service": "frontend",
+        "minutes": 3
+      },
+      "source": "docker logs --since 3m --timestamps frontend",
+      "summary": "frontend: 609 log lines in last 3m, 69 matched error/warn patterns.\n  x18: 2026-10-23T19:36:38.294915196Z {\"level\":50,\"time\":1792784198293,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"57d33e4023e7e3bb5b5b54b7603b346f\",\"span_id\":\"48407f6ac4484e77\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"HTTP error: 500 Internal Server Error - Failed to get quote: code: 'Unknown error', message: \\\"Failed to call quote service: Failed to connect to host: Failed resolving hostna\n  x9: 2026-10-23T19:36:38.296588612Z Error: HTTP error: 500 Internal Server Error - Failed to get quote: code: 'Unknown error', message: \"Failed to call quote service: Failed to connect to host: Failed resolving hostname: failed to lookup address information: Name or service not known\"\n  x9: 2026-10-23T19:37:02.872740975Z Error: HTTP error: 500 Internal Server Error - Failed to get quote: code: 'Unknown error', message: \"Failed to call quote service: Failed to connect to host: Failed resolving hostname: failed to lookup address information: No address associated with hostname\"\n  x8: 2026-10-23T19:37:12.127551466Z {\"level\":50,\"time\":1792784232120,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"a5d1b5c282b1feb9c3de3b3591f8c966\",\"span_id\":\"8ea51c5fececf3e7\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"13 INTERNAL: shipping quote failure: failed POST to shipping service: expected 200, got 500\",\"stack\":\"Error: 13 INTERNAL: shipping quote failure: failed POST to shipping servi\n  x8: 2026-10-23T19:37:12.127668398Z {\"level\":30,\"time\":1792784232123,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"a5d1b5c282b1feb9c3de3b3591f8c966\",\"span_id\":\"8ea51c5fececf3e7\",\"trace_flags\":\"01\",\"http.request.method\":\"POST\",\"url.path\":\"/api/checkout\",\"http.response.status_code\":500,\"msg\":\"API request completed\"}\n  x5: 2026-10-23T19:36:52.625519556Z {\"level\":30,\"time\":1792784212624,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"49d68b5b866d775500c499da13bd4939\",\"span_id\":\"29febf45c00f379c\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/cart\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x4: 2026-10-23T19:37:05.004725327Z {\"level\":30,\"time\":1792784225004,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"23f4b2d993ea4a0df26c13a0398d5fe8\",\"span_id\":\"39ba8b0f244dee06\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/recommendations\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x2: 2026-10-23T19:37:27.528363829Z {\"level\":30,\"time\":1792784247525,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"4a087e75039dd50a45185292556cfb2a\",\"span_id\":\"dfbef28492e9be1b\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/products\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}",
+      "ts": 1792784372.6869936
+    },
+    {
+      "id": "ev-006",
+      "tool": "get_logs",
+      "args": {
+        "service": "image-provider",
+        "minutes": 3
+      },
+      "source": "docker logs --since 3m --timestamps image-provider",
+      "summary": "image-provider: 454 log lines in last 3m, 10 matched error/warn patterns.\n  x2: 2026-10-23T19:37:38.750084296Z 172.19.0.26 - - [23/Oct/2026:19:37:38 +0000] \"GET /products/EclipsmartTravelRefractorTelescope.jpg HTTP/1.1\" 200 347245 \"http://frontend-proxy:8080/cart\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x2: 2026-10-23T19:37:47.533985034Z 172.19.0.26 - - [23/Oct/2026:19:37:47 +0000] \"GET /opentelemetry-demo-logo.png HTTP/1.1\" 200 100140 \"http://frontend-proxy:8080/cart\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:36:47.445235034Z 172.19.0.26 - - [23/Oct/2026:19:36:47 +0000] \"GET /products/OpticalTubeAssembly.jpg HTTP/1.1\" 200 22201 \"http://frontend-proxy:8080/\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:36:47.445503468Z 172.19.0.26 - - [23/Oct/2026:19:36:47 +0000] \"GET /products/LensCleaningKit.jpg HTTP/1.1\" 200 101928 \"http://frontend-proxy:8080/\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:37:57.609153503Z 172.19.0.26 - - [23/Oct/2026:19:37:57 +0000] \"GET /products/StarsenseExplorer.jpg HTTP/1.1\" 200 29713 \"http://frontend-proxy:8080/product/2ZYFJ3GM2N\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:38:10.750092592Z 172.19.0.26 - - [23/Oct/2026:19:38:10 +0000] \"GET /opentelemetry-demo-logo.png HTTP/1.1\" 200 100140 \"http://frontend-proxy:8080/\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:39:05.326895500Z 172.19.0.26 - - [23/Oct/2026:19:39:05 +0000] \"GET /products/EclipsmartTravelRefractorTelescope.jpg HTTP/1.1\" 200 347245 \"http://frontend-proxy:8080/\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:39:25.502585503Z 172.19.0.26 - - [23/Oct/2026:19:39:25 +0000] \"GET /products/LensCleaningKit.jpg HTTP/1.1\" 200 101928 \"http://frontend-proxy:8080/cart\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"",
+      "ts": 1792784373.9586122
+    },
+    {
+      "id": "ev-007",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "shipping",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=shipping&query.start_time_min=2026-10-23T19%3A29%3A38Z&query.start_time_max=2026-10-23T19%3A39%3A43Z&query.search_depth=100",
+      "summary": "20 error traces for 'shipping' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 13 traces\n  error ORIGINATES in checkout / oteldemo.CheckoutService/PlaceOrder: 7 traces  msg=\"shipping quote failure: failed POST to shipping service: expected 200, got 500\"\n  client call from shipping to 'quote' failed with NO server span (callee unreachable?): 20 traces\n  example trace ids: 8623ae6e63e4c768bf409fb70231b7cc, 58caa5fc720d8b32aaa499420a623231, 5db692fb0a4926f77285164324bcee0f, 9afc2e3b76559a0fe359eff889ecca1f, 7304b2d390861130274da1b7c4784338",
+      "ts": 1792784379.5469701
+    },
+    {
+      "id": "ev-008",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "checkout",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-23T19%3A29%3A39Z&query.start_time_max=2026-10-23T19%3A39%3A44Z&query.search_depth=100",
+      "summary": "13 error traces for 'checkout' in last 10m.\n  error ORIGINATES in checkout / oteldemo.CheckoutService/PlaceOrder: 11 traces  msg=\"shipping quote failure: failed POST to shipping service: expected 200, got 500\"\n  error ORIGINATES in checkout / POST: 1 traces  msg=\"context deadline exceeded\"\n  error ORIGINATES in frontend-proxy / router frontend egress: 1 traces\n  client call from shipping to 'quote' failed with NO server span (callee unreachable?): 11 traces\n  example trace ids: 58caa5fc720d8b32aaa499420a623231, 5db692fb0a4926f77285164324bcee0f, 7304b2d390861130274da1b7c4784338, 8337c8dde1b8c88df17a61d7e0e05b79, bdf96589bcd3ee2a33535bfa92fb1f46",
+      "ts": 1792784380.29576
+    },
+    {
+      "id": "ev-009",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "frontend",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T19%3A29%3A40Z&query.start_time_max=2026-10-23T19%3A39%3A45Z&query.search_depth=100",
+      "summary": "2 error traces for 'frontend' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 2 traces\n  client call from shipping to 'quote' failed with NO server span (callee unreachable?): 1 traces\n  example trace ids: 8623ae6e63e4c768bf409fb70231b7cc, 71b2693616a2475fa43759826870b0e2",
+      "ts": 1792784380.4895267
+    },
+    {
+      "id": "ev-010",
+      "tool": "latency_edges",
+      "args": {
+        "service": "frontend",
+        "lookback": "5m",
+        "limit": 30
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T19%3A34%3A40Z&query.start_time_max=2026-10-23T19%3A39%3A45Z&query.search_depth=30",
+      "summary": "Caller->callee gaps (client minus server time):\nfrontend-web -> frontend-proxy: median network gap 45.62ms (server itself 494.36ms, n=11)\nfrontend -> recommendation: median network gap 7.61ms (server itself 513.1ms, n=2)\nfrontend -> cart: median network gap 5.51ms (server itself 3.43ms, n=5)\nfrontend -> currency: median network gap 5.3ms (server itself 0.04ms, n=1)\nfrontend-proxy -> frontend: median network gap 1.88ms (server itself 17.08ms, n=26)",
+      "ts": 1792784380.5957866
+    },
+    {
+      "id": "ev-011",
+      "tool": "service_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))",
+      "summary": "14 services, 10 min history at 30s steps",
+      "ts": 1792784380.6418636
+    },
+    {
+      "id": "ev-012",
+      "tool": "container_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
+      "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
+      "ts": 1792784380.7106483
+    },
+    {
+      "id": "ev-013",
+      "tool": "graph_rca",
+      "args": {
+        "graph_edges": 28
+      },
+      "source": "rca.analyze over ev-011 + ev-012 on the merged call graph",
+      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: shipping 72%, checkout 28%\n  root: shipping [app_errors] - graph RCA: shipping ranks #1 (share 72%); own anomaly err 0.0->1.0 (z=100.0), p95 99.2857->4850.0 (z=65.0); its callers broke after it: ",
+      "ts": 1792784380.7211645
+    }
+  ],
+  "redactions": 6,
+  "schema_errors": []
+}

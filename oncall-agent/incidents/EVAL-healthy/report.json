@@ -1,0 +1,199 @@
+{
+  "incident_id": "EVAL-healthy",
+  "status": "escalated",
+  "detected_at": "2026-10-24T01:47:26",
+  "alert": "eval healthy",
+  "root_cause": {
+    "component": "ad",
+    "fault_class": "latency_degradation",
+    "summary": "ad: latency degradation. ad p95 540.0ms vs baseline 86.7ms (x6.23)",
+    "alternatives": [
+      "cart [latency_degradation] score=0.5"
+    ],
+    "secondary": [],
+    "mode": "triage-only",
+    "notes": [
+      "runner-up suspect nearly as strong"
+    ]
+  },
+  "confidence": 0.36,
+  "evidence": [
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "observation": "ad p95 540.0ms vs baseline 86.7ms (x6.23)"
+    }
+  ],
+  "proposed_action": {
+    "action": "restart_service",
+    "params": {
+      "service": "ad"
+    },
+    "reason": "ad diagnosed as latency_degradation; restart is the allowlisted remedy (clears leaked memory/caches, crashed processes, wedged connections; restarts stopped containers)."
+  },
+  "approval": null,
+  "actions_taken": [],
+  "verification": null,
+  "timeline": [
+    {
+      "time": "2026-10-24T01:47:26",
+      "event": "alert received: eval healthy"
+    },
+    {
+      "time": "2026-10-24T01:47:26",
+      "event": "triage: 2 suspects, top=ad/latency_degradation"
+    },
+    {
+      "time": "2026-10-24T01:47:26",
+      "event": "diagnosis: ad [latency_degradation] conf=0.36"
+    },
+    {
+      "time": "2026-10-24T01:47:26",
+      "event": "escalated to human: confidence 0.36 below threshold 0.55"
+    }
+  ],
+  "prevention": [
+    "Add a p95 latency SLO alert per service and investigate the slow dependency."
+  ],
+  "reviewer": null,
+  "escalation_reason": "confidence 0.36 below threshold 0.55",
+  "rejected_evidence": [],
+  "memory_hits": [],
+  "fewshot": [
+    {
+      "similarity": 0.277,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "resolved (verified)",
+      "source": "INC-20261023-224228-cart_down",
+      "shape": "cls:service_down, cls:dependency_unreachable, instrumented, combined"
+    }
+  ],
+  "llm": {
+    "model": null,
+    "calls": 0,
+    "tokens": 0
+  },
+  "investigation_transcript": [],
+  "triage": [
+    {
+      "component": "ad",
+      "fault_class": "latency_degradation",
+      "score": 0.5,
+      "rationale": [
+        "ad p95 540.0ms vs baseline 86.7ms (x6.23)"
+      ],
+      "evidence": [
+        "ev-003"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "cart",
+      "fault_class": "latency_degradation",
+      "score": 0.5,
+      "rationale": [
+        "graph RCA: cart ranks #1 (share 36%); own anomaly p95 45.6364->200.0 (z=30.9)"
+      ],
+      "evidence": [
+        "ev-009"
+      ],
+      "suggested_action": "restart_service"
+    }
+  ],
+  "ledger": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "args": {},
+      "source": "docker ps -a; docker inspect <all>",
+      "summary": "23 demo containers (compose project 'opentelemetry-demo'); 21 running normally. Ignored 3 unrelated containers.\n  !! astronomy-db: status=running health=healthy restarts=0 oom=True exit=0 finished_at=0001-01-01T00:00:00Z\n  !! product-catalog: status=running health=unhealthy restarts=1 oom=False exit=0 finished_at=2026-10-23T17:14:11.189287857Z",
+      "ts": 1792786646.8023317
+    },
+    {
+      "id": "ev-002",
+      "tool": "container_stats",
+      "args": {},
+      "source": "docker stats --no-stream",
+      "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=434.92% mem=86.37% (17.27MiB / 20MiB)\nfrontend: cpu=1.01% mem=94.36% (235.9MiB / 250MiB)\nopensearch: cpu=1.7% mem=90.59% (927.6MiB / 1GiB)\nad: cpu=6.8% mem=89.27% (267.8MiB / 300MiB)\nastronomy-db: cpu=1.64% mem=80.28% (64.23MiB / 80MiB)\nquote: cpu=9.29% mem=77.93% (31.17MiB / 40MiB)\nemail: cpu=19.96% mem=75.77% (75.77MiB / 100MiB)\npayment: cpu=3.04% mem=73.62% (103.1MiB / 140MiB)\nshipping: cpu=0.52% mem=70.53% (14.11MiB / 20MiB)\nfrontend-proxy: cpu=1.99% mem=68.85% (61.96MiB / 90MiB)\ngrafana: cpu=2.62% mem=68.27% (341.4MiB / 500MiB)\ncheckout: cpu=27.69% mem=67.97% (13.59MiB / 20MiB)\nvalkey-cart: cpu=0.36% mem=58.48% (11.7MiB / 20MiB)\nrecommendation: cpu=0.38% mem=52.08% (260.4MiB / 500MiB)\nprometheus: cpu=0.54% mem=48.62% (97.24MiB / 200MiB)",
+      "ts": 1792786646.8117838
+    },
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "args": {},
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "summary": "Service RED, worst first:\nfrontend-proxy: rps=2.176 (base 2.759), err=9.2% (base 5.7%), p95=14805.6ms (base 14362.5ms)\nad: rps=0.108 (base 0.133), err=0.0% (base 0.0%), p95=540.0ms (base 86.7ms)\nshipping: rps=0.033 (base 0.067), err=0.0% (base 0.0%), p95=4400.0ms (base 1240.0ms)\nquote: rps=0.017 (base 0.033), err=0.0% (base 0.0%), p95=3.8ms (base 1.9ms)\ncart: rps=0.325 (base 0.325), err=0.0% (base 0.0%), p95=168.3ms (base 105.0ms)\nfrontend: rps=2.343 (base 2.942), err=0.0% (base 0.0%), p95=15000.0ms (base 13696.4ms)\nimage-provider: rps=0.409 (base 0.408), err=0.0% (base 0.0%), p95=2.0ms (base 1.9ms)\ncheckout: rps=0.017 (base 0.025), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\ncurrency: rps=0.1 (base 0.167), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nrecommendation: rps=0.083 (base 0.133), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\ntelemetry-docs: rps=0.183 (base 0.183), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nemail: rps=0.017 (base 0.017), err=0.0% (base 0.0%), p95=48.0ms (base 95.0ms)\npayment: rps=0.017 (base 0.025), err=0.0% (base 0.0%), p95=7.8ms (base 92.5ms)\nproduct-catalog: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=Nonems (base Nonems)",
+      "ts": 1792786646.8146908
+    },
+    {
+      "id": "ev-004",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "checkout",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
+      "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
+      "ts": 1792786646.8478978
+    },
+    {
+      "id": "ev-005",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "frontend",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
+      "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
+      "ts": 1792786646.848053
+    },
+    {
+      "id": "ev-006",
+      "tool": "latency_edges",
+      "args": {
+        "service": "frontend",
+        "lookback": "5m",
+        "limit": 30
+      },
+      "source": "http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=5m&limit=30",
+      "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=5m&limit=30",
+      "ts": 1792786646.8481638
+    },
+    {
+      "id": "ev-007",
+      "tool": "service_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))",
+      "summary": "14 services, 10 min history at 30s steps",
+      "ts": 1792786646.8567953
+    },
+    {
+      "id": "ev-008",
+      "tool": "container_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
+      "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
+      "ts": 1792786646.872903
+    },
+    {
+      "id": "ev-009",
+      "tool": "graph_rca",
+      "args": {
+        "graph_edges": 28
+      },
+      "source": "rca.analyze over ev-007 + ev-008 on the merged call graph",
+      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: cart 36%, shipping 36%, ad 28%\n  root: cart [latency_degradation] - graph RCA: cart ranks #1 (share 36%); own anomaly p95 45.6364->200.0 (z=30.9)",
+      "ts": 1792786646.8903306
+    }
+  ],
+  "redactions": 0,
+  "schema_errors": []
+}

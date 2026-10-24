@@ -1,1 +1,66 @@
-{}
+{
+ "cart_down": {
+  "component": "cart",
+  "fault_class": "service_down",
+  "injected": "(automatic) stopping the cart container",
+  "ts": "2026-10-24 10:14"
+ },
+ "valkey": {
+  "component": "valkey-cart",
+  "fault_class": "service_down",
+  "injected": "(automatic) pausing the valkey-cart cache",
+  "ts": "2026-10-24 00:19"
+ },
+ "healthy": {
+  "component": "none",
+  "fault_class": "none",
+  "injected": "Nothing - leave everything normal (tests for false alarms)",
+  "ts": "2026-10-23 23:55"
+ },
+ "payment_paused": {
+  "component": "payment",
+  "fault_class": "service_down",
+  "injected": "(automatic) freezing the payment container",
+  "ts": "2026-10-24 00:32"
+ },
+ "catalog_down": {
+  "component": "product-catalog",
+  "fault_class": "service_down",
+  "injected": "(automatic) stopping product-catalog",
+  "ts": "2026-10-24 00:43"
+ },
+ "db_down": {
+  "component": "astronomy-db",
+  "fault_class": "service_down",
+  "injected": "(automatic) stopping the astronomy-db database",
+  "ts": "2026-10-24 00:56"
+ },
+ "quote_down": {
+  "component": "quote",
+  "fault_class": "service_down",
+  "injected": "(automatic) stopping quote",
+  "ts": "2026-10-24 01:09"
+ },
+ "rec_mem": {
+  "component": "recommendation",
+  "fault_class": "memory_starved",
+  "injected": "(automatic) squeezing recommendation to 40 MB of memory",
+  "ts": "2026-10-24 01:22"
+ },
+ "ad_starved": {
+  "component": "ad",
+  "fault_class": "cpu_starved",
+  "injected": "(automatic) limiting ad to 0.05 CPU",
+  "ts": "2026-10-24 01:36"
+ },
+ "combo_cart_ad": {
+  "component": "cart",
+  "fault_class": "service_down",
+  "injected": "(automatic) COMBINED: stopping cart AND limiting ad to 0.05 CPU",
+  "ts": "2026-10-24 01:47",
+  "secondary": {
+   "component": "ad",
+   "fault_class": "cpu_starved"
+  }
+ }
+}

@@ -1,0 +1,436 @@
+{
+  "incident_id": "INC-20261023-224228-cart_down",
+  "status": "resolved",
+  "detected_at": "2026-10-23T22:42:28",
+  "alert": "practice incident 'cart_down' (alert: on-call page)",
+  "root_cause": {
+    "component": "cart",
+    "fault_class": "service_down",
+    "summary": "The cart container exited with exit_code 137 (SIGKILL). No OOM flag on the container itself, but the host is under high memory pressure (multiple services >90% memory, astronomy-db OOM flag true). The host likely killed the cart process, causing downstream checkout and frontend errors.",
+    "alternatives": [
+      "astronomy-db OOM could be a co\u2011occurring issue."
+    ],
+    "secondary": [
+      {
+        "component": "astronomy-db",
+        "fault_class": "oom"
+      }
+    ],
+    "mode": "llm+triage",
+    "notes": []
+  },
+  "confidence": 0.919,
+  "evidence": [
+    {
+      "id": "ev-011",
+      "tool": "container_health",
+      "source": "docker ps -a; docker inspect <all>",
+      "observation": "cart: status=exited health=None restarts=0 oom=False exit=137 finished_at=2026-10-23T17:08:26.526474705Z"
+    },
+    {
+      "id": "ev-012",
+      "tool": "get_logs",
+      "source": "docker logs --since 15m --timestamps cart",
+      "observation": "cart logs show normal operation calls, no explicit crash or OOM messages."
+    },
+    {
+      "id": "ev-013",
+      "tool": "container_stats",
+      "source": "docker stats --no-stream",
+      "observation": "Many services report high memory usage: product-catalog mem=81.5% (16.3MiB/20MiB), payment mem=91.38% (127.9MiB/140MiB), frontend mem=95.17% (237.9MiB/250MiB), astronomy-db mem=92.68% (74.14MiB/80MiB)."
+    },
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "source": "docker ps -a; docker inspect <all>",
+      "observation": "deterministic triage ranked cart as service_down with score=0.979."
+    }
+  ],
+  "proposed_action": {
+    "action": "restart_service",
+    "params": {
+      "service": "cart"
+    },
+    "reason": "cart diagnosed as service_down; restart is the allowlisted remedy (clears leaked memory/caches, crashed processes, wedged connections; restarts stopped containers)."
+  },
+  "approval": {
+    "approved": true,
+    "answer": "yes",
+    "approver": "Amrith",
+    "ts": 1792775757.919489,
+    "proposal": "b06b2eeb",
+    "channel": "terminal"
+  },
+  "actions_taken": [
+    {
+      "ts": 1792775762.8164566,
+      "action": "restart_service",
+      "params": {
+        "service": "cart"
+      },
+      "dry_run": false,
+      "response": {
+        "ok": true,
+        "ran": "docker start cart",
+        "output": "cart",
+        "previous_state": "exited"
+      }
+    }
+  ],
+  "verification": {
+    "recovered": true,
+    "checks": [
+      {
+        "healthy": true,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 0,
+          "errors_cleared": true
+        },
+        "ts": 1792775788.4993048
+      },
+      {
+        "healthy": true,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 0,
+          "errors_cleared": true
+        },
+        "ts": 1792775812.3827875
+      }
+    ]
+  },
+  "timeline": [
+    {
+      "time": "2026-10-23T22:42:28",
+      "event": "alert received: practice incident 'cart_down' (alert: on-call page)"
+    },
+    {
+      "time": "2026-10-23T22:43:02",
+      "event": "triage: 4 suspects, top=cart/service_down"
+    },
+    {
+      "time": "2026-10-23T22:44:42",
+      "event": "LLM investigation finished (6 steps)"
+    },
+    {
+      "time": "2026-10-23T22:45:09",
+      "event": "reviewer verdict: agree"
+    },
+    {
+      "time": "2026-10-23T22:45:09",
+      "event": "diagnosis: cart [service_down] conf=0.919"
+    },
+    {
+      "time": "2026-10-23T22:45:57",
+      "event": "human approval: APPROVED"
+    },
+    {
+      "time": "2026-10-23T22:46:02",
+      "event": "action restart_service -> ok=True dry_run=False"
+    },
+    {
+      "time": "2026-10-23T22:46:52",
+      "event": "verification: recovered=True"
+    }
+  ],
+  "prevention": [
+    "Add a container liveness/readiness check with auto-restart policy and an alert on 'container not running' for >1 min."
+  ],
+  "reviewer": {
+    "verdict": "agree",
+    "reason": "The cart container exited with SIGKILL (code 137) while no OOM flag is set on it, and host memory pressure is high (many services >90% memory, astronomy-db OOM flag true). Downstream calls to cart fail, matching the observed errors, and no other component shows a direct cause.",
+    "better_component": null
+  },
+  "escalation_reason": null,
+  "rejected_evidence": [],
+  "memory_hits": [],
+  "fewshot": [],
+  "llm": {
+    "model": "openai/gpt-oss-120b",
+    "calls": 8,
+    "tokens": 21725
+  },
+  "investigation_transcript": [
+    {
+      "step": 0,
+      "thought": "Check cart container health to confirm it is exited with exit_code 137 indicating OOM or kill, supporting service_down suspect.",
+      "tool": "container_health",
+      "args": {},
+      "obs": "[ev-011] (container_health) 23 demo containers (compose project 'opentelemetry-demo'); 20 running normally. Ignored 3 unrelated containers.\n  !! astronomy-db: status=running health=healthy restarts=0 oom=True exit=0 finished_at=0001-01-01T00:00:00Z\n  !! cart: status=exited health=None restarts=0 oom=False exit=137 finished_at=2026-10-23T17:08:26.526474705Z\n  !! product-catalog: status=running health=unhealthy restarts=0 oom=False exit=0 finished_at=0001-01-01T00:00:00Z"
+    },
+    {
+      "step": 1,
+      "thought": "Inspect recent cart logs for OOM or crash messages confirming cause of exit_code 137.",
+      "tool": "get_logs",
+      "args": {
+        "service": "cart",
+        "minutes": 15
+      },
+      "obs": "[ev-012] (get_logs) cart: 438 log lines in last 15m, 10 matched error/warn patterns.\n  x5: 2026-10-23T17:01:02.135037394Z info: cart.cartstore.ValkeyCartStore[1662118147]\n  x1: 2026-10-23T17:00:29.553664503Z       GetCartAsync called with userId=e5b21b5c-90f0-4361-8a92-5a41074b7501\n  x1: 2026-10-23T17:03:27.245004671Z       GetCartAsync called with userId=24d6caa2-6c66-4b80-bebb-bff1ba92e393\n  x1: 2026-10-23T17:04:22.288231500Z       AddItemAsync called with userId=c20b4946-cf03-11f1-8321-024383aa057b, productId=0PUK6V6EV0, quantity=1\n  x1: 2026-10-23T17:05:01.450361695Z       AddItemAsync called with userId=d069a08c-cf03-11f1-8321-024383aa057b, productId=2ZYFJ3GM2N, quantity=10\n  x1: 2026-10-23T17:05:10.503354146Z       GetCartAsync called with userId=9d4cffb9-7283-4022-b2bf-1ac922d93e98"
+    },
+    {
+      "step": 2,
+      "thought": "Await container_stats observation to assess memory pressure on cart before exit.",
+      "tool": "container_stats",
+      "args": {},
+      "obs": "[ev-013] (container_stats) Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=638.77% mem=81.5% (16.3MiB / 20MiB)\nload-generator: cpu=252.35% mem=40.78% (611.6MiB / 1.465GiB)\njaeger: cpu=250.54% mem=22.21% (266.5MiB / 1.172GiB)\npayment: cpu=155.32% mem=91.38% (127.9MiB / 140MiB)\nfrontend: cpu=71.18% mem=95.17% (237.9MiB / 250MiB)\nastronomy-db: cpu=13.11% mem=92.68% (74.14MiB / 80MiB)\nopensearch: cpu=28.51% mem=90.6% (927.8MiB / 1GiB)\nad: cpu=24.52% mem=87.24% (261.7MiB / 300MiB)\nemail: cpu=7.55% mem=76.46% (76.46MiB / 100MiB)\nquote: cpu=0.04% mem=76.3% (30.52MiB / 40MiB)\nfrontend-proxy: cpu=17.85% mem=69.09% (62.18MiB / 90MiB)\ncheckout: cpu=67.96% mem=69.02% (13.8MiB / 20MiB)\ngrafana: cpu=19.14% mem=68.29% (341.5MiB / 500MiB)\nshipping: cpu=1.89% mem=65.82% (13.16MiB / 20MiB)\nvalkey-cart: cpu=0.45% mem=58.34% (11.67MiB / 20MiB)"
+    },
+    {
+      "step": 3,
+      "thought": "Query recent memory usage of the cart container to see if it hit its limit before being killed (supporting OOM/service_down).",
+      "tool": "prom_query",
+      "args": {
+        "query": "container_memory_usage_bytes{container=\"cart\"}"
+      },
+      "obs": "[ev-014] (prom_query) 0 series\n"
+    },
+    {
+      "step": 4,
+      "thought": "Check astronomy-db logs for OOM kill messages to confirm host memory pressure causing cart termination.",
+      "tool": "get_logs",
+      "args": {
+        "service": "astronomy-db",
+        "minutes": 15
+      },
+      "obs": "[ev-015] (get_logs) astronomy-db: 243 log lines in last 15m, 168 matched error/warn patterns.\n  x163: 2026-10-23T16:58:49.582592247Z 2026-10-23 16:58:49.580 UTC [5986] FATAL:  role \"root\" does not exist\n  x2: 2026-10-23T17:09:07.272532237Z 2026-10-23 17:09:07.271 UTC [772] ERROR:  syntax error at or near \"$12\" at character 689\n  x1: 2026-10-23T17:09:07.272725007Z \tWHERE\n  x1: 2026-10-23T17:09:07.303643073Z 2026-10-23 17:09:07.302 UTC [772] ERROR:  prepared statement \"otel__4021484349309401941\" does not exist\n  x1: 2026-10-23T17:09:08.377503622Z 2026-10-23 17:09:08.377 UTC [772] ERROR:  prepared statement \"otel__3572901684491608047\" does not exist"
+    },
+    {
+      "step": 6,
+      "final": {
+        "component": "cart",
+        "fault_class": "service_down",
+        "summary": "The cart container exited with exit_code 137 (SIGKILL). No OOM flag on the container itself, but the host is under high memory pressure (multiple services >90% memory, astronomy-db OOM flag true). The host likely killed the cart process, causing downstream checkout and frontend errors.",
+        "confidence": 0.86,
+        "evidence": [
+          {
+            "id": "ev-011",
+            "observation": "cart: status=exited health=None restarts=0 oom=False exit=137 finished_at=2026-10-23T17:08:26.526474705Z"
+          },
+          {
+            "id": "ev-012",
+            "observation": "cart logs show normal operation calls, no explicit crash or OOM messages."
+          },
+          {
+            "id": "ev-013",
+            "observation": "Many services report high memory usage: product-catalog mem=81.5% (16.3MiB/20MiB), payment mem=91.38% (127.9MiB/140MiB), frontend mem=95.17% (237.9MiB/250MiB), astronomy-db mem=92.68% (74.14MiB/80MiB)."
+          },
+          {
+            "id": "ev-001",
+            "observation": "deterministic triage ranked cart as service_down with score=0.979."
+          }
+        ],
+        "alternatives": [
+          "astronomy-db OOM could be a co\u2011occurring issue."
+        ],
+        "secondary": [
+          {
+            "component": "astronomy-db",
+            "fault_class": "oom"
+          }
+        ]
+      }
+    }
+  ],
+  "triage": [
+    {
+      "component": "cart",
+      "fault_class": "service_down",
+      "score": 0.979,
+      "rationale": [
+        "container cart status=exited exit_code=137",
+        "(also dependency_unreachable) 11 failed calls from frontend to cart never reached a cart server span",
+        "(also dependency_unreachable) 5 failed calls from checkout to oteldemo.CartService/GetCart never reached a cart server span"
+      ],
+      "evidence": [
+        "ev-001",
+        "ev-007",
+        "ev-006"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "checkout",
+      "fault_class": "app_errors",
+      "score": 0.8,
+      "rationale": [
+        "checkout error rate 100.0% (baseline 0.0%); none of its dependencies are failing; callers ['frontend'] fail too (propagated symptom)"
+      ],
+      "evidence": [
+        "ev-003"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "astronomy-db",
+      "fault_class": "oom",
+      "score": 0.75,
+      "rationale": [
+        "astronomy-db was OOM-killed (restarts=0)"
+      ],
+      "evidence": [
+        "ev-001"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "frontend",
+      "fault_class": "app_errors",
+      "score": 0.35,
+      "rationale": [
+        "frontend logged 277 error/warn lines in the last 3 min (baseline 3)"
+      ],
+      "evidence": [
+        "ev-005"
+      ],
+      "suggested_action": "restart_service"
+    }
+  ],
+  "ledger": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "args": {},
+      "source": "docker ps -a; docker inspect <all>",
+      "summary": "23 demo containers (compose project 'opentelemetry-demo'); 20 running normally. Ignored 3 unrelated containers.\n  !! astronomy-db: status=running health=healthy restarts=0 oom=True exit=0 finished_at=0001-01-01T00:00:00Z\n  !! cart: status=exited health=None restarts=0 oom=False exit=137 finished_at=2026-10-23T17:08:26.526474705Z\n  !! product-catalog: status=running health=unhealthy restarts=0 oom=False exit=0 finished_at=0001-01-01T00:00:00Z",
+      "ts": 1792775552.3475447
+    },
+    {
+      "id": "ev-002",
+      "tool": "container_stats",
+      "args": {},
+      "source": "docker stats --no-stream",
+      "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=637.29% mem=91.89% (18.38MiB / 20MiB)\npayment: cpu=137.24% mem=72.66% (101.7MiB / 140MiB)\nfrontend: cpu=4.39% mem=95.2% (238MiB / 250MiB)\nopensearch: cpu=18.69% mem=90.18% (923.5MiB / 1GiB)\nastronomy-db: cpu=0.49% mem=89.0% (71.2MiB / 80MiB)\nad: cpu=1.04% mem=87.23% (261.7MiB / 300MiB)\nquote: cpu=16.37% mem=77.45% (30.98MiB / 40MiB)\nemail: cpu=0.61% mem=76.11% (76.11MiB / 100MiB)\ncheckout: cpu=7.3% mem=68.59% (13.72MiB / 20MiB)\ngrafana: cpu=3.91% mem=68.28% (341.4MiB / 500MiB)\nfrontend-proxy: cpu=7.76% mem=67.86% (61.07MiB / 90MiB)\nshipping: cpu=1.44% mem=66.17% (13.23MiB / 20MiB)\nvalkey-cart: cpu=16.77% mem=58.32% (11.66MiB / 20MiB)\nrecommendation: cpu=1.3% mem=50.97% (254.9MiB / 500MiB)\ncurrency: cpu=2.51% mem=45.49% (9.098MiB / 20MiB)",
+      "ts": 1792775563.6522515
+    },
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "args": {},
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "summary": "Service RED, worst first:\ncheckout: rps=0.017 (base 0.025), err=100.0% (base 0.0%), p95=3599.6ms (base 15000.0ms)\nfrontend: rps=2.735 (base 2.617), err=31.1% (base 0.0%), p95=15000.0ms (base 14205.9ms)\nfrontend-proxy: rps=2.401 (base 2.509), err=25.0% (base 6.3%), p95=15000.0ms (base 13919.6ms)\nimage-provider: rps=0.409 (base 0.4), err=0.0% (base 0.0%), p95=3.1ms (base 1.9ms)\nrecommendation: rps=0.167 (base 0.142), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\ntelemetry-docs: rps=0.192 (base 0.183), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nad: rps=0.108 (base 0.125), err=0.0% (base 0.0%), p95=67.5ms (base 125.0ms)\ncurrency: rps=0.067 (base 0.167), err=0.0% (base 0.0%), p95=1.9ms (base 4.0ms)\ncart: rps=0.0 (base 0.317), err=0.0% (base 0.0%), p95=Nonems (base 210.0ms)\nemail: rps=0.0 (base 0.025), err=0.0% (base 0.0%), p95=Nonems (base 92.5ms)\npayment: rps=0.0 (base 0.033), err=0.0% (base 0.0%), p95=Nonems (base 42.0ms)\nproduct-catalog: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=Nonems (base Nonems)\nquote: rps=0.0 (base 0.033), err=0.0% (base 0.0%), p95=Nonems (base 3.8ms)\nshipping: rps=0.0 (base 0.058), err=0.0% (base 0.0%), p95=Nonems (base 82.5ms)",
+      "ts": 1792775563.9250553
+    },
+    {
+      "id": "ev-004",
+      "tool": "service_graph",
+      "args": {
+        "lookback": "15m"
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend-proxy&query.start_time_min=2026-10-23T16%3A57%3A43Z&query.start_time_max=2026-10-23T17%3A12%3A48Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T16%3A57%3A44Z&query.start_time_max=2026-10-23T17%3A12%3A49Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-23T16%3A57%3A44Z&query.start_time_max=2026-10-23T17%3A12%3A49Z&query.search_depth=20",
+      "summary": "Learned 17 call edges from 55 traces:\ncart -> valkey-cart (116 calls)\nfrontend-proxy -> frontend (96 calls)\nload-generator -> frontend-proxy (79 calls)\nfrontend -> cart (58 calls)\ncheckout -> currency (29 calls)\ncheckout -> shipping (20 calls)\ncheckout -> cart (19 calls)\nfrontend -> checkout (15 calls)\nshipping -> quote (10 calls)\ncheckout -> payment (10 calls)\ncheckout -> email (10 calls)\nfrontend-web -> frontend-proxy (5 calls)\nfrontend -> currency (1 calls)\ncheckout -> product-catalog (1 calls)\nproduct-catalog -> astronomy-db (1 calls)",
+      "ts": 1792775564.7942295
+    },
+    {
+      "id": "ev-005",
+      "tool": "get_logs",
+      "args": {
+        "service": "frontend",
+        "minutes": 3
+      },
+      "source": "docker logs --since 3m --timestamps frontend",
+      "summary": "frontend: 721 log lines in last 3m, 277 matched error/warn patterns.\n  x87: 2026-10-23T17:09:51.020263657Z {\"level\":50,\"time\":1792775391018,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"d157d78303ee294f7965f689dbbb0a9c\",\"span_id\":\"7905741339f5f839\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 172.19.0.20:7070. Resolution note: \",\"stack\":\"Error: 14 UNAVAILABLE: No connection establish\n  x87: 2026-10-23T17:09:51.025419948Z Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 172.19.0.20:7070. Resolution note: \n  x87: 2026-10-23T17:09:51.025483810Z   details: 'No connection established. Last error: Error: connect EHOSTUNREACH 172.19.0.20:7070. Resolution note: ',\n  x3: 2026-10-23T17:10:18.602636905Z {\"level\":50,\"time\":1792775418601,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"fe8ba53774bae2fb8222d7f6973e2dc3\",\"span_id\":\"fd5b665817941120\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"13 INTERNAL: cart failure: failed to get user cart during checkout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses\",\"stack\":\"Error: 13 INTER\n  x3: 2026-10-23T17:10:18.603104483Z {\"level\":30,\"time\":1792775418602,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"fe8ba53774bae2fb8222d7f6973e2dc3\",\"span_id\":\"fd5b665817941120\",\"trace_flags\":\"01\",\"http.request.method\":\"POST\",\"url.path\":\"/api/checkout\",\"http.response.status_code\":500,\"msg\":\"API request completed\"}\n  x2: 2026-10-23T17:11:43.641154542Z {\"level\":30,\"time\":1792775503640,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"b80572679e032942cd8b1338f3260edd\",\"span_id\":\"9d00a6c7f3b0ed4f\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/currency\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x2: 2026-10-23T17:09:57.500203552Z     at new Promise (<anonymous>) {\n  x2: 2026-10-23T17:09:57.500220105Z   metadata: Metadata { internalRepr: Map(0) {}, options: {} }",
+      "ts": 1792775570.223826
+    },
+    {
+      "id": "ev-006",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "checkout",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-23T17%3A03%3A00Z&query.start_time_max=2026-10-23T17%3A13%3A05Z&query.search_depth=100",
+      "summary": "9 error traces for 'checkout' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 23 traces\n  error ORIGINATES in checkout / oteldemo.CheckoutService/PlaceOrder: 5 traces  msg=\"cart failure: failed to get user cart during checkout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses\"\n  error ORIGINATES in checkout / POST: 1 traces  msg=\"context deadline exceeded\"\n  client call from frontend to 'cart' failed with NO server span (callee unreachable?): 10 traces\n  client call from frontend to 'dns.lookup' failed with NO server span (callee unreachable?): 7 traces\n  client call from checkout to 'oteldemo.CartService/GetCart' failed with NO server span (callee unreachable?): 5 traces\n  client call from checkout to 'oteldemo.CartService/EmptyCart' failed with NO server span (callee unreachable?): 1 traces\n  example trace ids: 246ce39fbb6b2791b4147dfc3afb8231, 5404e5409d63b4ea4bda6e6ec2a51c49, fe8ba53774bae2fb8222d7f6973e2dc3, b37d31edcbd1da3e847480ecf354f695, cf94340e63969b411271fe17b520f986",
+      "ts": 1792775581.2554862
+    },
+    {
+      "id": "ev-007",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "frontend",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T17%3A03%3A01Z&query.start_time_max=2026-10-23T17%3A13%3A06Z&query.search_depth=100",
+      "summary": "20 error traces for 'frontend' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 6 traces\n  client call from frontend to 'cart' failed with NO server span (callee unreachable?): 11 traces\n  client call from frontend-proxy to 'router frontend egress' failed with NO server span (callee unreachable?): 4 traces\n  example trace ids: 14c712c665aa54b1d57672f3c377ca4c, 192f60a3b7b7186657b77ca61b57a2f5, 9bf58934c255e4aeff1a084e826c7d8d, 56609f7c332a6cca65f010689ee5decf, b1b2c9d25da7efa28b6f552189c70013",
+      "ts": 1792775581.641375
+    },
+    {
+      "id": "ev-008",
+      "tool": "service_history",
+      "args": {},
+      "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[1m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[1m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[1m])))",
+      "summary": "no span-metric history: ",
+      "ts": 1792775581.87166
+    },
+    {
+      "id": "ev-009",
+      "tool": "container_history",
+      "args": {},
+      "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
+      "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
+      "ts": 1792775582.0067
+    },
+    {
+      "id": "ev-010",
+      "tool": "graph_rca",
+      "args": {
+        "graph_edges": 28
+      },
+      "source": "rca.analyze over ev-008 + ev-009 on the merged call graph",
+      "summary": "Graph RCA: no service or container deviates from its own recent history.",
+      "ts": 1792775582.008315
+    },
+    {
+      "id": "ev-011",
+      "tool": "container_health",
+      "args": {},
+      "source": "docker ps -a; docker inspect <all>",
+      "summary": "23 demo containers (compose project 'opentelemetry-demo'); 20 running normally. Ignored 3 unrelated containers.\n  !! astronomy-db: status=running health=healthy restarts=0 oom=True exit=0 finished_at=0001-01-01T00:00:00Z\n  !! cart: status=exited health=None restarts=0 oom=False exit=137 finished_at=2026-10-23T17:08:26.526474705Z\n  !! product-catalog: status=running health=unhealthy restarts=0 oom=False exit=0 finished_at=0001-01-01T00:00:00Z",
+      "ts": 1792775589.8550386
+    },
+    {
+      "id": "ev-012",
+      "tool": "get_logs",
+      "args": {
+        "service": "cart",
+        "minutes": 15
+      },
+      "source": "docker logs --since 15m --timestamps cart",
+      "summary": "cart: 438 log lines in last 15m, 10 matched error/warn patterns.\n  x5: 2026-10-23T17:01:02.135037394Z info: cart.cartstore.ValkeyCartStore[1662118147]\n  x1: 2026-10-23T17:00:29.553664503Z       GetCartAsync called with userId=e5b21b5c-90f0-4361-8a92-5a41074b7501\n  x1: 2026-10-23T17:03:27.245004671Z       GetCartAsync called with userId=24d6caa2-6c66-4b80-bebb-bff1ba92e393\n  x1: 2026-10-23T17:04:22.288231500Z       AddItemAsync called with userId=c20b4946-cf03-11f1-8321-024383aa057b, productId=0PUK6V6EV0, quantity=1\n  x1: 2026-10-23T17:05:01.450361695Z       AddItemAsync called with userId=d069a08c-cf03-11f1-8321-024383aa057b, productId=2ZYFJ3GM2N, quantity=10\n  x1: 2026-10-23T17:05:10.503354146Z       GetCartAsync called with userId=9d4cffb9-7283-4022-b2bf-1ac922d93e98",
+      "ts": 1792775591.7719667
+    },
+    {
+      "id": "ev-013",
+      "tool": "container_stats",
+      "args": {},
+      "source": "docker stats --no-stream",
+      "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=638.77% mem=81.5% (16.3MiB / 20MiB)\nload-generator: cpu=252.35% mem=40.78% (611.6MiB / 1.465GiB)\njaeger: cpu=250.54% mem=22.21% (266.5MiB / 1.172GiB)\npayment: cpu=155.32% mem=91.38% (127.9MiB / 140MiB)\nfrontend: cpu=71.18% mem=95.17% (237.9MiB / 250MiB)\nastronomy-db: cpu=13.11% mem=92.68% (74.14MiB / 80MiB)\nopensearch: cpu=28.51% mem=90.6% (927.8MiB / 1GiB)\nad: cpu=24.52% mem=87.24% (261.7MiB / 300MiB)\nemail: cpu=7.55% mem=76.46% (76.46MiB / 100MiB)\nquote: cpu=0.04% mem=76.3% (30.52MiB / 40MiB)\nfrontend-proxy: cpu=17.85% mem=69.09% (62.18MiB / 90MiB)\ncheckout: cpu=67.96% mem=69.02% (13.8MiB / 20MiB)\ngrafana: cpu=19.14% mem=68.29% (341.5MiB / 500MiB)\nshipping: cpu=1.89% mem=65.82% (13.16MiB / 20MiB)\nvalkey-cart: cpu=0.45% mem=58.34% (11.67MiB / 20MiB)",
+      "ts": 1792775604.5898106
+    },
+    {
+      "id": "ev-014",
+      "tool": "prom_query",
+      "args": {
+        "query": "container_memory_usage_bytes{container=\"cart\"}"
+      },
+      "source": "PromQL: container_memory_usage_bytes{container=\"cart\"}",
+      "summary": "0 series\n",
+      "ts": 1792775605.6677837
+    },
+    {
+      "id": "ev-015",
+      "tool": "get_logs",
+      "args": {
+        "service": "astronomy-db",
+        "minutes": 15
+      },
+      "source": "docker logs --since 15m --timestamps astronomy-db",
+      "summary": "astronomy-db: 243 log lines in last 15m, 168 matched error/warn patterns.\n  x163: 2026-10-23T16:58:49.582592247Z 2026-10-23 16:58:49.580 UTC [5986] FATAL:  role \"root\" does not exist\n  x2: 2026-10-23T17:09:07.272532237Z 2026-10-23 17:09:07.271 UTC [772] ERROR:  syntax error at or near \"$12\" at character 689\n  x1: 2026-10-23T17:09:07.272725007Z \tWHERE\n  x1: 2026-10-23T17:09:07.303643073Z 2026-10-23 17:09:07.302 UTC [772] ERROR:  prepared statement \"otel__4021484349309401941\" does not exist\n  x1: 2026-10-23T17:09:08.377503622Z 2026-10-23 17:09:08.377 UTC [772] ERROR:  prepared statement \"otel__3572901684491608047\" does not exist",
+      "ts": 1792775625.398731
+    }
+  ],
+  "redactions": 4,
+  "schema_errors": []
+}

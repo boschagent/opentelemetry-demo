@@ -43,56 +43,99 @@ def inspect(svc):
     return hc.get("NanoCpus", 0), hc.get("Memory", 0), hc.get("MemorySwap", 0)
 
 
-def main():
+def host_cpus() -> str:
+    """Docker cannot 'unset' a CPU limit (--cpus 0 is ignored, --cpu-quota -1 conflicts with NanoCPUs), so
+    'no limit' is restored as a limit equal to every CPU of the Docker VM."""
+    p = subprocess.run(["docker", "info", "--format", "{{.NCPU}}"], capture_output=True, text=True)
+    return p.stdout.strip() if p.stdout.strip().isdigit() else "8"
+
+
+def restore_demo() -> None:
+    """Safety net: unpause / start any container of the demo's compose project that is paused or stopped."""
+    proj = subprocess.run(["docker", "inspect", "-f", '{{index .Config.Labels "com.docker.compose.project"}}', "frontend"],
+                          capture_output=True, text=True).stdout.strip()
+    if not proj:
+        return
+    rows = subprocess.run(["docker", "ps", "-a", "--filter", f"label=com.docker.compose.project={proj}",
+                           "--format", "{{.Names}} {{.State}}"], capture_output=True, text=True).stdout.split("\n")
+    for row in rows:
+        if not row.strip():
+            continue
+        name, state = row.split()[0], row.split()[-1]
+        if state == "paused":
+            sh("unpause", name)
+        elif state in ("exited", "created", "dead"):
+            sh("start", name)
+
+
+def main() -> int:
     if len(sys.argv) < 2:
         print(__doc__)
-        return
+        return 2
     cmd, args, st = sys.argv[1], sys.argv[2:], load()
     if cmd != "reset" and args:
         chk = subprocess.run(["docker", "inspect", "-f", "{{.State.Status}}", args[0]], capture_output=True, text=True)
         if chk.returncode != 0:
             print(f"Container '{args[0]}' does not exist. Start the demo first (in the opentelemetry-demo folder):\n"
                   "  docker compose -f compose.yaml -f compose.observability.yaml up -d\nthen: python -m oncall.doctor")
-            return
+            return 1
         if chk.stdout.strip() != "running":
             print(f"Container '{args[0]}' is '{chk.stdout.strip()}', not running. Run: python practice/inject.py reset")
-            return
+            return 1
+    ok = True
     if cmd == "stop":
-        sh("stop", args[0]); st.append({"kind": "stop", "svc": args[0]})
+        ok = sh("stop", args[0]).returncode == 0
+        if ok:
+            st.append({"kind": "stop", "svc": args[0]})
     elif cmd == "pause":
-        sh("pause", args[0]); st.append({"kind": "pause", "svc": args[0]})
+        ok = sh("pause", args[0]).returncode == 0
+        if ok:
+            st.append({"kind": "pause", "svc": args[0]})
     elif cmd == "cpu":
         cpu, mem, swap = inspect(args[0])
-        sh("update", "--cpus", args[1], args[0]); st.append({"kind": "cpu", "svc": args[0], "old": cpu})
+        ok = sh("update", "--cpus", args[1], args[0]).returncode == 0
+        if ok:
+            st.append({"kind": "cpu", "svc": args[0], "old": cpu})
     elif cmd == "mem":
         cpu, mem, swap = inspect(args[0])
-        sh("update", "--memory", args[1], "--memory-swap", args[1], args[0])
-        st.append({"kind": "mem", "svc": args[0], "old": mem, "old_swap": swap})
+        ok = sh("update", "--memory", args[1], "--memory-swap", args[1], args[0]).returncode == 0
+        if ok:
+            st.append({"kind": "mem", "svc": args[0], "old": mem, "old_swap": swap})
     elif cmd in ("delay", "loss"):
         name = f"pumba-{cmd}-{args[0]}"
         netem = ["delay", "--time", args[1]] if cmd == "delay" else ["loss", "--percent", args[1]]
-        sh("run", "-d", "--name", name, "-v", "/var/run/docker.sock:/var/run/docker.sock", "gaiaadm/pumba",
-           "netem", "--duration", "15m", "--tc-image", "gaiadocker/iproute2", *netem, args[0])
-        st.append({"kind": "pumba", "name": name})
+        ok = sh("run", "-d", "--name", name, "-v", "/var/run/docker.sock:/var/run/docker.sock", "gaiaadm/pumba",
+                "netem", "--duration", "15m", "--tc-image", "gaiadocker/iproute2", *netem, args[0]).returncode == 0
+        if ok:
+            st.append({"kind": "pumba", "name": name})
     elif cmd == "reset":
+        left = []
         for x in reversed(st):
             if x["kind"] == "stop":
-                sh("start", x["svc"])
+                r = sh("start", x["svc"])
             elif x["kind"] == "pause":
-                sh("unpause", x["svc"])
+                r = sh("unpause", x["svc"])
             elif x["kind"] == "cpu":
-                sh("update", "--cpus", str(x["old"] / 1e9) if x["old"] else "0", x["svc"])
+                r = sh("update", "--cpus", f"{x['old'] / 1e9:g}" if x["old"] else host_cpus(), x["svc"])
             elif x["kind"] == "mem":
-                sh("update", "--memory", str(x["old"] or 0), "--memory-swap", str(x["old_swap"] or -1), x["svc"])
-            elif x["kind"] == "pumba":
-                sh("rm", "-f", x["name"])
-        st = []
-        print("reset done. Also reset flags in http://localhost:8080/feature/ if you changed any.")
+                r = sh("update", "--memory", str(x["old"] or 0), "--memory-swap", str(x["old_swap"] or -1), x["svc"])
+            else:
+                r = sh("rm", "-f", x["name"])
+            if r.returncode != 0 and "is not paused" not in (r.stdout + r.stderr):
+                left.append(x)
+        restore_demo()
+        st = left
+        ok = not left
+        print("reset done." if ok else f"reset INCOMPLETE, still injected: {left}")
+        print("Also reset flags in http://localhost:8080/feature/ if you changed any.")
     else:
         print(__doc__)
-        return
+        return 2
     save(st)
+    if not ok:
+        print(f"FAILED: inject {cmd} {args}")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -1,0 +1,558 @@
+{
+  "incident_id": "INC-20261023-230029-valkey",
+  "status": "escalated",
+  "detected_at": "2026-10-23T23:00:29",
+  "alert": "practice incident 'valkey' (alert: on-call page)",
+  "root_cause": {
+    "component": "valkey-cart",
+    "fault_class": "service_down",
+    "summary": "The valkey-cart container is paused and marked unhealthy, so the Redis instance is unreachable. Cart service calls time out (RedisTimeoutException), causing 100% error rates and high latency that cascade to checkout and frontend.",
+    "alternatives": [
+      "cart app_errors due to internal bug",
+      "frontend high_cpu causing downstream timeouts"
+    ],
+    "secondary": [
+      {
+        "component": "cart",
+        "fault_class": "app_errors"
+      }
+    ],
+    "mode": "llm+triage",
+    "notes": []
+  },
+  "confidence": 0.93,
+  "evidence": [
+    {
+      "id": "ev-014",
+      "tool": "container_health",
+      "source": "docker ps -a; docker inspect <all>",
+      "observation": "valkey-cart: status=paused health=unhealthy restarts=0 oom=False exit=0"
+    },
+    {
+      "id": "ev-015",
+      "tool": "find_error_traces",
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=cart&query.start_time_min=2026-10-23T17%3A21%3A30Z&query.start_time_max=2026-10-23T17%3A31%3A35Z&query.search_depth=100",
+      "observation": "error ORIGINATES in cart ... \"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection\""
+    },
+    {
+      "id": "ev-018",
+      "tool": "service_red",
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "observation": "cart: err=100.0% (base 0.0%), p95=9750.0ms (base 47.8ms) \u2013 errors propagate from cart to checkout and frontend"
+    }
+  ],
+  "proposed_action": {
+    "action": "restart_service",
+    "params": {
+      "service": "valkey-cart"
+    },
+    "reason": "valkey-cart diagnosed as service_down; restart is the allowlisted remedy (clears leaked memory/caches, crashed processes, wedged connections; restarts stopped containers)."
+  },
+  "approval": {
+    "approved": true,
+    "answer": "yes",
+    "approver": "Amrith",
+    "ts": 1792776785.7358797,
+    "proposal": "8db77c1f",
+    "channel": "terminal"
+  },
+  "actions_taken": [
+    {
+      "ts": 1792776788.9384992,
+      "action": "restart_service",
+      "params": {
+        "service": "valkey-cart"
+      },
+      "dry_run": false,
+      "response": {
+        "ok": true,
+        "ran": "docker unpause valkey-cart",
+        "output": "valkey-cart",
+        "previous_state": "paused"
+      }
+    }
+  ],
+  "verification": {
+    "recovered": false,
+    "checks": [
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 20,
+          "errors_cleared": false
+        },
+        "ts": 1792776814.1962333
+      },
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 10,
+          "errors_cleared": false
+        },
+        "ts": 1792776845.9164846
+      },
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 11,
+          "errors_cleared": false
+        },
+        "ts": 1792776870.453594
+      },
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 11,
+          "errors_cleared": false
+        },
+        "ts": 1792776903.192587
+      },
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 12,
+          "errors_cleared": false
+        },
+        "ts": 1792776928.3064492
+      },
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 13,
+          "errors_cleared": false
+        },
+        "ts": 1792776957.1949377
+      },
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 10,
+          "errors_cleared": false
+        },
+        "ts": 1792776985.9834144
+      },
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 12,
+          "errors_cleared": false
+        },
+        "ts": 1792777014.9057405
+      }
+    ]
+  },
+  "timeline": [
+    {
+      "time": "2026-10-23T23:00:29",
+      "event": "alert received: practice incident 'valkey' (alert: on-call page)"
+    },
+    {
+      "time": "2026-10-23T23:00:58",
+      "event": "triage: 6 suspects, top=cart/app_errors"
+    },
+    {
+      "time": "2026-10-23T23:03:01",
+      "event": "LLM investigation finished (6 steps)"
+    },
+    {
+      "time": "2026-10-23T23:03:03",
+      "event": "reviewer verdict: agree"
+    },
+    {
+      "time": "2026-10-23T23:03:03",
+      "event": "diagnosis: valkey-cart [service_down] conf=0.93"
+    },
+    {
+      "time": "2026-10-23T23:03:05",
+      "event": "human approval: APPROVED"
+    },
+    {
+      "time": "2026-10-23T23:03:08",
+      "event": "action restart_service -> ok=True dry_run=False"
+    },
+    {
+      "time": "2026-10-23T23:07:14",
+      "event": "verification: recovered=False"
+    }
+  ],
+  "prevention": [
+    "Add a container liveness/readiness check with auto-restart policy and an alert on 'container not running' for >1 min."
+  ],
+  "reviewer": {
+    "verdict": "agree",
+    "reason": "ev-014 shows valkey-cart paused/unhealthy, directly causing Redis connection failures observed in ev-015 and the 100% error rate in cart (ev-018). No other component shows a comparable root\u2011cause failure.",
+    "better_component": null
+  },
+  "escalation_reason": "system did not recover after the approved action (restart has no inverse)",
+  "rejected_evidence": [],
+  "memory_hits": [
+    {
+      "incident_id": "INC-20261023-224228-cart_down",
+      "component": "cart",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "resolved",
+      "summary": "The cart container exited with exit_code 137 (SIGKILL). No OOM flag on the container itself, but the host is under high memory pressure (multiple services >90% memory, astronomy-db OOM flag true). The"
+    }
+  ],
+  "fewshot": [
+    {
+      "similarity": 0.447,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "resolved (verified)",
+      "source": "INC-20261023-224228-cart_down",
+      "shape": "cls:service_down, cls:dependency_unreachable, instrumented, combined"
+    }
+  ],
+  "llm": {
+    "model": "openai/gpt-oss-120b",
+    "calls": 10,
+    "tokens": 27359
+  },
+  "investigation_transcript": [
+    {
+      "step": 2,
+      "thought": "Check container health to verify valkey-cart status (paused) and other containers.",
+      "tool": "container_health",
+      "args": {},
+      "obs": "[ev-014] (container_health) 23 demo containers (compose project 'opentelemetry-demo'); 20 running normally. Ignored 3 unrelated containers.\n  !! astronomy-db: status=running health=healthy restarts=0 oom=True exit=0 finished_at=0001-01-01T00:00:00Z\n  !! product-catalog: status=running health=unhealthy restarts=1 oom=False exit=0 finished_at=2026-10-23T17:14:11.189287857Z\n  !! valkey-cart: status=paused health=unhealthy restarts=0 oom=False exit=0 finished_at=0001-01-01T00:00:00Z"
+    },
+    {
+      "step": 4,
+      "thought": "Find where cart errors originate and whether they involve valkey-cart calls.",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "cart",
+        "lookback": "10m"
+      },
+      "obs": "[ev-015] (find_error_traces) 20 error traces for 'cart' in last 10m.\n  error ORIGINATES in cart / POST /oteldemo.CartService/GetCart: 18 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  error ORIGINATES in frontend-proxy / router frontend egress: 13 traces\n  error ORIGINATES in cart / POST /oteldemo.CartService/AddItem: 1 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  client call from frontend to 'cart' failed with NO server span (callee unreachable?): 1 traces\n  example trace ids: 3955e0a49b9ef6a6d406d209060d53c2, 83a8e0d7053ebcfaf8f857066b77d920, 0ef789b7e9ce288ce5715e56d735a101, 9ef26febf5807decd0af25e8ffba03c8, 35ce0f26c6ea307c6e2dd076873a266a"
+    },
+    {
+      "step": 5,
+      "thought": "Inspect valkey-cart logs for errors indicating why it's paused/unhealthy.",
+      "tool": "get_logs",
+      "args": {
+        "service": "valkey-cart",
+        "minutes": 10
+      },
+      "obs": "[ev-016] (get_logs) valkey-cart: 0 log lines in last 10m, 0 matched error/warn patterns."
+    },
+    {
+      "step": 6,
+      "thought": "Check container stats for valkey-cart to see if it's using CPU/memory (paused likely shows 0 usage).",
+      "tool": "container_stats",
+      "args": {},
+      "obs": "[ev-017] (container_stats) Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=620.73% mem=75.14% (15.03MiB / 20MiB)\nfrontend: cpu=4.69% mem=94.62% (236.6MiB / 250MiB)\nopensearch: cpu=5.91% mem=90.28% (924.5MiB / 1GiB)\nemail: cpu=12.11% mem=87.06% (87.06MiB / 100MiB)\nad: cpu=0.34% mem=86.88% (260.6MiB / 300MiB)\nquote: cpu=0.06% mem=75.9% (30.36MiB / 40MiB)\npayment: cpu=1.01% mem=73.21% (102.5MiB / 140MiB)\nastronomy-db: cpu=19.38% mem=72.93% (58.35MiB / 80MiB)\ncheckout: cpu=2.52% mem=69.86% (13.97MiB / 20MiB)\nfrontend-proxy: cpu=20.21% mem=68.01% (61.21MiB / 90MiB)\ngrafana: cpu=2.26% mem=67.28% (336.4MiB / 500MiB)\nshipping: cpu=1.44% mem=66.37% (13.27MiB / 20MiB)\nvalkey-cart: cpu=0.0% mem=58.55% (11.71MiB / 20MiB)\nrecommendation: cpu=2.01% mem=50.94% (254.7MiB / 500MiB)\nprometheus: cpu=1.61% mem=47.65% (95.3MiB / 200MiB)"
+    },
+    {
+      "step": 7,
+      "thought": "Check valkey-cart request metrics to confirm it is not serving traffic.",
+      "tool": "service_red",
+      "args": {},
+      "obs": "[ev-018] (service_red) Service RED, worst first:\ncart: rps=0.367 (base 0.35), err=100.0% (base 0.0%), p95=9750.0ms (base 47.8ms)\ncheckout: rps=0.008 (base 0.017), err=100.0% (base 50.0%), p95=9750.0ms (base 15000.0ms)\nfrontend: rps=3.626 (base 3.393), err=15.4% (base 0.5%), p95=15000.0ms (base 15000.0ms)\nfrontend-proxy: rps=3.259 (base 3.068), err=11.0% (base 6.0%), p95=13112.5ms (base 13678.6ms)\ncurrency: rps=0.175 (base 0.208), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nimage-provider: rps=0.433 (base 0.5), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nproduct-catalog: rps=0.7 (base 0.592), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\nrecommendation: rps=0.2 (base 0.133), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\ntelemetry-docs: rps=0.192 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nad: rps=0.133 (base 0.142), err=0.0% (base 0.0%), p95=60.0ms (base 78.7ms)\nemail: rps=0.0 (base 0.008), err=0.0% (base 0.0%), p95=Nonems (base 48.0ms)\npayment: rps=0.0 (base 0.008), err=0.0% (base 0.0%), p95=Nonems (base 97.5ms)\nquote: rps=0.0 (base 0.008), err=0.0% (base 0.0%), p95=Nonems (base 1.9ms)\nshipping: rps=0.0 (base 0.017), err=0.0% (base 0.0%), p95=Nonems (base 46.0ms)"
+    },
+    {
+      "step": 8,
+      "final": {
+        "component": "valkey-cart",
+        "fault_class": "service_down",
+        "summary": "The valkey-cart container is paused and marked unhealthy, so the Redis instance is unreachable. Cart service calls time out (RedisTimeoutException), causing 100% error rates and high latency that cascade to checkout and frontend.",
+        "confidence": 0.96,
+        "evidence": [
+          {
+            "id": "ev-014",
+            "observation": "valkey-cart: status=paused health=unhealthy restarts=0 oom=False exit=0"
+          },
+          {
+            "id": "ev-015",
+            "observation": "error ORIGINATES in cart ... \"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection\""
+          },
+          {
+            "id": "ev-018",
+            "observation": "cart: err=100.0% (base 0.0%), p95=9750.0ms (base 47.8ms) \u2013 errors propagate from cart to checkout and frontend"
+          }
+        ],
+        "alternatives": [
+          "cart app_errors due to internal bug",
+          "frontend high_cpu causing downstream timeouts"
+        ],
+        "secondary": [
+          {
+            "component": "cart",
+            "fault_class": "app_errors"
+          }
+        ]
+      }
+    }
+  ],
+  "triage": [
+    {
+      "component": "cart",
+      "fault_class": "app_errors",
+      "score": 0.95,
+      "rationale": [
+        "cart logged 63 error/warn lines in the last 3 min (baseline 2)",
+        "cart error rate 100.0% (baseline 0.0%); none of its dependencies are failing; callers ['checkout', 'frontend'] fail too (propagated symptom)",
+        "(also latency_degradation) cart p95 9750.0ms vs baseline 90.8ms (x107.34)"
+      ],
+      "evidence": [
+        "ev-005",
+        "ev-003"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "valkey-cart",
+      "fault_class": "service_down",
+      "score": 0.9,
+      "rationale": [
+        "container valkey-cart status=paused exit_code=0"
+      ],
+      "evidence": [
+        "ev-001"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "frontend",
+      "fault_class": "high_cpu",
+      "score": 0.862,
+      "rationale": [
+        "frontend using 130.85% CPU (healthy baseline 95.58% mem / 2.84% cpu)",
+        "(also app_errors) frontend logged 198 error/warn lines in the last 3 min (baseline 3); but its dependencies ['cart'] are also failing (likely symptom)",
+        "(also dependency_unreachable) 1 failed calls from frontend-proxy to router frontend egress never reached a frontend server span"
+      ],
+      "evidence": [
+        "ev-002",
+        "ev-006",
+        "ev-007"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "astronomy-db",
+      "fault_class": "oom",
+      "score": 0.75,
+      "rationale": [
+        "astronomy-db was OOM-killed (restarts=0)"
+      ],
+      "evidence": [
+        "ev-001"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "product-catalog",
+      "fault_class": "crash_restart",
+      "score": 0.6,
+      "rationale": [
+        "product-catalog restart count=1 (healthy baseline 0)"
+      ],
+      "evidence": [
+        "ev-001"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "email",
+      "fault_class": "dependency_unreachable",
+      "score": 0.515,
+      "rationale": [
+        "2 failed calls from checkout to email never reached a email server span"
+      ],
+      "evidence": [
+        "ev-008"
+      ],
+      "suggested_action": "restart_service"
+    }
+  ],
+  "ledger": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "args": {},
+      "source": "docker ps -a; docker inspect <all>",
+      "summary": "23 demo containers (compose project 'opentelemetry-demo'); 20 running normally. Ignored 3 unrelated containers.\n  !! astronomy-db: status=running health=healthy restarts=0 oom=True exit=0 finished_at=0001-01-01T00:00:00Z\n  !! product-catalog: status=running health=unhealthy restarts=1 oom=False exit=0 finished_at=2026-10-23T17:14:11.189287857Z\n  !! valkey-cart: status=paused health=unhealthy restarts=0 oom=False exit=0 finished_at=0001-01-01T00:00:00Z",
+      "ts": 1792776636.6319542
+    },
+    {
+      "id": "ev-002",
+      "tool": "container_stats",
+      "args": {},
+      "source": "docker stats --no-stream",
+      "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=512.64% mem=75.68% (15.14MiB / 20MiB)\nload-generator: cpu=253.7% mem=40.91% (613.6MiB / 1.465GiB)\npayment: cpu=151.04% mem=93.09% (130.3MiB / 140MiB)\ncheckout: cpu=133.29% mem=69.39% (13.88MiB / 20MiB)\nfrontend: cpu=130.85% mem=95.1% (237.8MiB / 250MiB)\nopensearch: cpu=28.97% mem=90.29% (924.6MiB / 1GiB)\nad: cpu=17.26% mem=88.55% (265.6MiB / 300MiB)\nemail: cpu=36.43% mem=88.33% (88.33MiB / 100MiB)\nquote: cpu=0.04% mem=76.65% (30.66MiB / 40MiB)\nastronomy-db: cpu=0.0% mem=69.38% (55.5MiB / 80MiB)\nfrontend-proxy: cpu=19.26% mem=68.08% (61.27MiB / 90MiB)\ngrafana: cpu=2.69% mem=67.69% (338.5MiB / 500MiB)\nshipping: cpu=1.36% mem=66.46% (13.29MiB / 20MiB)\nvalkey-cart: cpu=0.0% mem=58.87% (11.77MiB / 20MiB)\nrecommendation: cpu=1.92% mem=51.03% (255.1MiB / 500MiB)",
+      "ts": 1792776651.603555
+    },
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "args": {},
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "summary": "Service RED, worst first:\ncart: rps=0.353 (base 0.271), err=100.0% (base 0.0%), p95=9750.0ms (base 90.8ms)\ncheckout: rps=0.008 (base 0.0), err=100.0% (base 0.0%), p95=9750.0ms (base Nonems)\nfrontend: rps=2.701 (base 2.676), err=20.1% (base 0.0%), p95=14928.6ms (base 15000.0ms)\nfrontend-proxy: rps=2.501 (base 2.201), err=17.0% (base 9.1%), p95=15000.0ms (base 15000.0ms)\nad: rps=0.117 (base 0.117), err=0.0% (base 0.0%), p95=130.0ms (base 8.6ms)\ncurrency: rps=0.075 (base 0.25), err=0.0% (base 0.0%), p95=3.1ms (base 1.9ms)\nimage-provider: rps=0.417 (base 0.409), err=0.0% (base 0.0%), p95=2.0ms (base 2.0ms)\nproduct-catalog: rps=1.142 (base 1.109), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\nrecommendation: rps=0.108 (base 0.1), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\ntelemetry-docs: rps=0.192 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nemail: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=Nonems (base Nonems)\npayment: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=Nonems (base Nonems)\nquote: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=Nonems (base Nonems)\nshipping: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=Nonems (base Nonems)",
+      "ts": 1792776651.7097907
+    },
+    {
+      "id": "ev-004",
+      "tool": "service_graph",
+      "args": {
+        "lookback": "15m"
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend-proxy&query.start_time_min=2026-10-23T17%3A15%3A51Z&query.start_time_max=2026-10-23T17%3A30%3A56Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T17%3A15%3A51Z&query.start_time_max=2026-10-23T17%3A30%3A56Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-23T17%3A15%3A51Z&query.start_time_max=2026-10-23T17%3A30%3A56Z&query.search_depth=20",
+      "summary": "Learned 19 call edges from 49 traces:\nfrontend-proxy -> frontend (71 calls)\ncart -> valkey-cart (52 calls)\nload-generator -> frontend-proxy (37 calls)\nfrontend -> cart (27 calls)\nproduct-catalog -> astronomy-db (20 calls)\ncheckout -> cart (11 calls)\nfrontend -> product-catalog (11 calls)\ncheckout -> currency (10 calls)\nfrontend -> checkout (9 calls)\ncheckout -> shipping (9 calls)\nfrontend-web -> frontend-proxy (6 calls)\nshipping -> quote (4 calls)\ncheckout -> payment (4 calls)\ncheckout -> email (4 calls)\ncheckout -> product-catalog (4 calls)\nfrontend -> currency (2 calls)",
+      "ts": 1792776652.1036372
+    },
+    {
+      "id": "ev-005",
+      "tool": "get_logs",
+      "args": {
+        "service": "cart",
+        "minutes": 3
+      },
+      "source": "docker logs --since 3m --timestamps cart",
+      "summary": "cart: 307 log lines in last 3m, 63 matched error/warn patterns.\n  x61: 2026-10-23T17:27:59.816927158Z       Error status code 'FailedPrecondition' with detail 'Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection became available, command=HGET, timeout: 5000, inst: 0, qu: 2, qs: 0, aw: False, bw: CheckingForTimeout, rs: ReadAsync, ws: Idle, in: 0, in-pipe: 0, last-in: 0, cu\n  x2: 2026-10-23T17:29:34.779839500Z info: Grpc.AspNetCore.Server.ServerCallHandler[7]",
+      "ts": 1792776652.8356836
+    },
+    {
+      "id": "ev-006",
+      "tool": "get_logs",
+      "args": {
+        "service": "frontend",
+        "minutes": 3
+      },
+      "source": "docker logs --since 3m --timestamps frontend",
+      "summary": "frontend: 1101 log lines in last 3m, 198 matched error/warn patterns.\n  x60: 2026-10-23T17:27:59.816343899Z {\"level\":50,\"time\":1792776479811,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"5b438d721d1ea2fce384ad3b4369cbaf\",\"span_id\":\"0ee83e3d734bfbdf\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"9 FAILED_PRECONDITION: Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\n  x38: 2026-10-23T17:27:59.816510051Z Error: 9 FAILED_PRECONDITION: Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection became available, command=HGET, timeout: 5000, inst: 0, qu: 2, qs: 0, aw: False, bw: CheckingForTimeout, rs: ReadAsync, ws: Idle, in: 0, in-pipe: 0, last-in: 0, cur-in: 0, sync-ops: 2, async-\n  x38: 2026-10-23T17:27:59.816557634Z   details: \"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection became available, command=HGET, timeout: 5000, inst: 0, qu: 2, qs: 0, aw: False, bw: CheckingForTimeout, rs: ReadAsync, ws: Idle, in: 0, in-pipe: 0, last-in: 0, cur-in: 0, sync-ops: 2, async-ops: 259, serverEn\n  x9: 2026-10-23T17:28:30.806273374Z Error: 9 FAILED_PRECONDITION: Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection became available, command=HGET, timeout: 5000, inst: 0, qu: 3, qs: 0, aw: False, bw: CheckingForTimeout, rs: ReadAsync, ws: Flushed, in: 0, in-pipe: 0, last-in: 0, cur-in: 0, sync-ops: 2, asy\n  x9: 2026-10-23T17:28:30.806327800Z   details: \"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection became available, command=HGET, timeout: 5000, inst: 0, qu: 3, qs: 0, aw: False, bw: CheckingForTimeout, rs: ReadAsync, ws: Flushed, in: 0, in-pipe: 0, last-in: 0, cur-in: 0, sync-ops: 2, async-ops: 268, serve\n  x7: 2026-10-23T17:28:35.814502961Z Error: 9 FAILED_PRECONDITION: Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection became available, command=HGET, timeout: 5000, inst: 0, qu: 1, qs: 0, aw: False, bw: CheckingForTimeout, rs: NotStarted, ws: Initializing, in: 0, in-pipe: 0, last-in: 0, cur-in: 0, sync-ops: \n  x6: 2026-10-23T17:28:07.920277463Z Error: 9 FAILED_PRECONDITION: Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection became available, command=HGET, timeout: 5000, inst: 0, qu: 0, qs: 0, aw: False, bw: CheckingForTimeout, last-in: 0, cur-in: 0, sync-ops: 2, async-ops: 260, serverEndpoint: valkey-cart:6379, \n  x6: 2026-10-23T17:28:07.920332115Z   details: \"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection became available, command=HGET, timeout: 5000, inst: 0, qu: 0, qs: 0, aw: False, bw: CheckingForTimeout, last-in: 0, cur-in: 0, sync-ops: 2, async-ops: 260, serverEndpoint: valkey-cart:6379, conn-sec: n/a, aoc",
+      "ts": 1792776654.4242601
+    },
+    {
+      "id": "ev-007",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "cart",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=cart&query.start_time_min=2026-10-23T17%3A20%3A56Z&query.start_time_max=2026-10-23T17%3A31%3A01Z&query.search_depth=100",
+      "summary": "20 error traces for 'cart' in last 10m.\n  error ORIGINATES in cart / POST /oteldemo.CartService/GetCart: 17 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  error ORIGINATES in frontend-proxy / router frontend egress: 13 traces\n  error ORIGINATES in cart / POST /oteldemo.CartService/AddItem: 3 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  client call from frontend-proxy to 'router frontend egress' failed with NO server span (callee unreachable?): 1 traces\n  example trace ids: dcf23c4700f8fe74ba2b539f30e5c1d0, f9cea1197b808ef6369ccde39a6d41d1, a5267b991b36099183ea9fa7347740b7, 8c9bfadd305511563214a216ad026eac, 4876e7bfd3462b3abecd754a586d9ceb",
+      "ts": 1792776657.5859194
+    },
+    {
+      "id": "ev-008",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "checkout",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-23T17%3A20%3A57Z&query.start_time_max=2026-10-23T17%3A31%3A02Z&query.search_depth=100",
+      "summary": "4 error traces for 'checkout' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 10 traces\n  error ORIGINATES in cart / POST /oteldemo.CartService/AddItem: 2 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  error ORIGINATES in cart / POST /oteldemo.CartService/GetCart: 1 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  error ORIGINATES in checkout / oteldemo.CheckoutService/PlaceOrder: 1 traces  msg=\"cart failure: failed to get user cart during checkout: rpc error: code = FailedPrecondition desc = Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the ba\"\n  error ORIGINATES in cart / POST /oteldemo.CartService/EmptyCart: 1 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  client call from checkout to 'email' failed with NO server span (callee unreachable?): 2 traces\n  example trace ids: 74c4374d1df98b233522f4b55ce6e397, f299e334f0a74016997ba1193211acde, 20af63d8b4bd381366c4f51bf1288621, de2a700e77653e7ef63b7269bae860dd",
+      "ts": 1792776657.9805446
+    },
+    {
+      "id": "ev-009",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "frontend",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T17%3A20%3A57Z&query.start_time_max=2026-10-23T17%3A31%3A02Z&query.search_depth=100",
+      "summary": "18 error traces for 'frontend' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 15 traces\n  error ORIGINATES in cart / POST /oteldemo.CartService/GetCart: 8 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  example trace ids: dcf23c4700f8fe74ba2b539f30e5c1d0, 6b0cccb2fa7db3c77bc6970587e042d2, b194e4a9b3a4dd42ad1f21f75159aadb, 05b3d8896b2c21431df03bc1a0443ef7, d7f0532952e8ad170db88a68b24daa39",
+      "ts": 1792776658.1179523
+    },
+    {
+      "id": "ev-010",
+      "tool": "latency_edges",
+      "args": {
+        "service": "frontend",
+        "lookback": "5m",
+        "limit": 30
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T17%3A25%3A58Z&query.start_time_max=2026-10-23T17%3A31%3A03Z&query.search_depth=30",
+      "summary": "Caller->callee gaps (client minus server time):\nfrontend-web -> frontend-proxy: median network gap 22.88ms (server itself 5971.12ms, n=1)\nfrontend -> cart: median network gap 1.47ms (server itself 5963.86ms, n=1)\nfrontend-proxy -> frontend: median network gap 0.96ms (server itself 10.16ms, n=21)",
+      "ts": 1792776658.2398999
+    },
+    {
+      "id": "ev-011",
+      "tool": "service_history",
+      "args": {},
+      "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[1m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[1m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[1m])))",
+      "summary": "no span-metric history: ",
+      "ts": 1792776658.3073862
+    },
+    {
+      "id": "ev-012",
+      "tool": "container_history",
+      "args": {},
+      "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
+      "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
+      "ts": 1792776658.3625362
+    },
+    {
+      "id": "ev-013",
+      "tool": "graph_rca",
+      "args": {
+        "graph_edges": 28
+      },
+      "source": "rca.analyze over ev-011 + ev-012 on the merged call graph",
+      "summary": "Graph RCA: no service or container deviates from its own recent history.",
+      "ts": 1792776658.3637555
+    },
+    {
+      "id": "ev-014",
+      "tool": "container_health",
+      "args": {},
+      "source": "docker ps -a; docker inspect <all>",
+      "summary": "23 demo containers (compose project 'opentelemetry-demo'); 20 running normally. Ignored 3 unrelated containers.\n  !! astronomy-db: status=running health=healthy restarts=0 oom=True exit=0 finished_at=0001-01-01T00:00:00Z\n  !! product-catalog: status=running health=unhealthy restarts=1 oom=False exit=0 finished_at=2026-10-23T17:14:11.189287857Z\n  !! valkey-cart: status=paused health=unhealthy restarts=0 oom=False exit=0 finished_at=0001-01-01T00:00:00Z",
+      "ts": 1792776664.2218175
+    },
+    {
+      "id": "ev-015",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "cart",
+        "lookback": "10m"
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=cart&query.start_time_min=2026-10-23T17%3A21%3A30Z&query.start_time_max=2026-10-23T17%3A31%3A35Z&query.search_depth=100",
+      "summary": "20 error traces for 'cart' in last 10m.\n  error ORIGINATES in cart / POST /oteldemo.CartService/GetCart: 18 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  error ORIGINATES in frontend-proxy / router frontend egress: 13 traces\n  error ORIGINATES in cart / POST /oteldemo.CartService/AddItem: 1 traces  msg=\"Status(StatusCode=\"FailedPrecondition\", Detail=\"Can't access cart storage. StackExchange.Redis.RedisTimeoutException: The message timed out in the backlog attempting to send because no connection beca\"\n  client call from frontend to 'cart' failed with NO server span (callee unreachable?): 1 traces\n  example trace ids: 3955e0a49b9ef6a6d406d209060d53c2, 83a8e0d7053ebcfaf8f857066b77d920, 0ef789b7e9ce288ce5715e56d735a101, 9ef26febf5807decd0af25e8ffba03c8, 35ce0f26c6ea307c6e2dd076873a266a",
+      "ts": 1792776691.0976226
+    },
+    {
+      "id": "ev-016",
+      "tool": "get_logs",
+      "args": {
+        "service": "valkey-cart",
+        "minutes": 10
+      },
+      "source": "docker logs --since 10m --timestamps valkey-cart",
+      "summary": "valkey-cart: 0 log lines in last 10m, 0 matched error/warn patterns.",
+      "ts": 1792776709.5832114
+    },
+    {
+      "id": "ev-017",
+      "tool": "container_stats",
+      "args": {},
+      "source": "docker stats --no-stream",
+      "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=620.73% mem=75.14% (15.03MiB / 20MiB)\nfrontend: cpu=4.69% mem=94.62% (236.6MiB / 250MiB)\nopensearch: cpu=5.91% mem=90.28% (924.5MiB / 1GiB)\nemail: cpu=12.11% mem=87.06% (87.06MiB / 100MiB)\nad: cpu=0.34% mem=86.88% (260.6MiB / 300MiB)\nquote: cpu=0.06% mem=75.9% (30.36MiB / 40MiB)\npayment: cpu=1.01% mem=73.21% (102.5MiB / 140MiB)\nastronomy-db: cpu=19.38% mem=72.93% (58.35MiB / 80MiB)\ncheckout: cpu=2.52% mem=69.86% (13.97MiB / 20MiB)\nfrontend-proxy: cpu=20.21% mem=68.01% (61.21MiB / 90MiB)\ngrafana: cpu=2.26% mem=67.28% (336.4MiB / 500MiB)\nshipping: cpu=1.44% mem=66.37% (13.27MiB / 20MiB)\nvalkey-cart: cpu=0.0% mem=58.55% (11.71MiB / 20MiB)\nrecommendation: cpu=2.01% mem=50.94% (254.7MiB / 500MiB)\nprometheus: cpu=1.61% mem=47.65% (95.3MiB / 200MiB)",
+      "ts": 1792776741.4094853
+    },
+    {
+      "id": "ev-018",
+      "tool": "service_red",
+      "args": {},
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "summary": "Service RED, worst first:\ncart: rps=0.367 (base 0.35), err=100.0% (base 0.0%), p95=9750.0ms (base 47.8ms)\ncheckout: rps=0.008 (base 0.017), err=100.0% (base 50.0%), p95=9750.0ms (base 15000.0ms)\nfrontend: rps=3.626 (base 3.393), err=15.4% (base 0.5%), p95=15000.0ms (base 15000.0ms)\nfrontend-proxy: rps=3.259 (base 3.068), err=11.0% (base 6.0%), p95=13112.5ms (base 13678.6ms)\ncurrency: rps=0.175 (base 0.208), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nimage-provider: rps=0.433 (base 0.5), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nproduct-catalog: rps=0.7 (base 0.592), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\nrecommendation: rps=0.2 (base 0.133), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\ntelemetry-docs: rps=0.192 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nad: rps=0.133 (base 0.142), err=0.0% (base 0.0%), p95=60.0ms (base 78.7ms)\nemail: rps=0.0 (base 0.008), err=0.0% (base 0.0%), p95=Nonems (base 48.0ms)\npayment: rps=0.0 (base 0.008), err=0.0% (base 0.0%), p95=Nonems (base 97.5ms)\nquote: rps=0.0 (base 0.008), err=0.0% (base 0.0%), p95=Nonems (base 1.9ms)\nshipping: rps=0.0 (base 0.017), err=0.0% (base 0.0%), p95=Nonems (base 46.0ms)",
+      "ts": 1792776755.5601463
+    }
+  ],
+  "redactions": 8,
+  "schema_errors": []
+}

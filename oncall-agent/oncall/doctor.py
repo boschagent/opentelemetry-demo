@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -46,6 +47,9 @@ def check(be: Backend, cfg: Config) -> list[tuple[str, bool, str]]:
     js = traces.list_services(be, cfg)
     out.append(("Jaeger has traces", bool(js.get("ok") and js.get("data")),
                 f"Jaeger at {cfg.jaeger_url} not answering. Open http://localhost:8080/jaeger/ui in a browser; needs the jaeger container."))
+    cs = metrics.container_series(be, cfg, minutes=5)
+    out.append(("Container metrics in Prometheus (optional)", bool(cs.get("ok") and cs.get("data")),
+                "Optional extra eyes: the collector's docker_stats metrics were not found. Run with --verbose and paste it."))
     a = be.http("GET", cfg.action_api_url + "/health", timeout=3)
     out.append(("Action API running", a.get("ok", False), "Open a 2nd terminal in oncall-agent and run:  python -m oncall.action_api"))
     out.append(("LLM configured (optional)", bool(cfg.llm_base_url and cfg.llm_model and cfg.llm_api_key) or "localhost" in cfg.llm_base_url,
@@ -86,6 +90,12 @@ def verbose(be: Backend, cfg: Config) -> None:
         {"query.service_name": "frontend", "query.start_time_min": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 300)),
          "query.start_time_max": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 5)), "query.search_depth": "1"}), timeout=20)
     print("raw v3 trace sample:", r.get("status"), (r.get("text") or "")[:700])
+    names = metrics._metric_names(be, cfg)
+    os.makedirs("logs", exist_ok=True)
+    with open(os.path.join("logs", "prom_metric_names.txt"), "w", encoding="utf-8") as f:
+        f.write("\n".join(names))
+    print(f"prometheus metric names: {len(names)} (saved to logs/prom_metric_names.txt); container_*:",
+          [n for n in names if n.startswith("container_")][:12])
     for c in ("otel-collector", "jaeger"):
         lg = be.run(["docker", "logs", "--tail", "15", c])
         txt = ((lg.get("stdout") or "") + (lg.get("stderr") or ""))[-2500:]
@@ -111,8 +121,12 @@ def record_baseline(be: Backend, cfg: Config, samples: int = 3) -> dict:
             logs[n] = (lg.get("data") or {}).get("matched", 0)
     red = metrics.service_red(be, cfg)
     h = infra.container_health(be, cfg)
-    health = {c["name"]: {"health": c["health"], "restarts": c["restarts"], "status": c["status"]} for c in h.get("data") or []}
-    base = {"recorded_at": now_iso(), "stats": stats, "log_errors": logs, "red": red.get("data") or [], "health": health}
+    health = {c["name"]: {"health": c["health"], "restarts": c["restarts"], "status": c["status"],
+                          "cpu_limit_cores": c.get("cpu_limit_cores"), "mem_limit_mb": c.get("mem_limit_mb")}
+              for c in h.get("data") or []}
+    g = traces.service_graph(be, cfg, lookback="15m", known=set(health) | {r["service"] for r in red.get("data") or []})
+    base = {"recorded_at": now_iso(), "stats": stats, "log_errors": logs, "red": red.get("data") or [], "health": health,
+            "graph": g.get("data") or []}
     atomic_write(cfg.baseline_file, json.dumps(base, indent=1))
     return base
 
@@ -136,7 +150,7 @@ def main(argv=None) -> int:
         b = record_baseline(be, cfg)
         noisy = {k: v for k, v in b["log_errors"].items() if v}
         print(f"\nBaseline saved to {cfg.baseline_file}: {len(b['stats'])} containers, "
-              f"{len(b['red'])} services with metrics. Normally-noisy logs: {noisy}")
+              f"{len(b['red'])} services with metrics, {len(b['graph'])} learned call edges. Normally-noisy logs: {noisy}")
         print("Make sure NO fault was injected while this ran (all flags off).")
     print("\nREADY" if not hard_fail else f"\nNOT READY: fix {len(hard_fail)} item(s) above, then run this again.")
     return 0 if not hard_fail else 1

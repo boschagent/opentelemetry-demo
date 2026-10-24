@@ -25,7 +25,12 @@ from oncall.run import investigate_incident  # noqa: E402
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--llm", action="store_true")
+    ap.add_argument("--ablate", default="", help="comma list of parts to switch off: rca,graph,fewshot")
+    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--degrade", default="", help="pretend a data source is down: docker,jaeger,prom (robustness)")
     a = ap.parse_args()
+    os.environ["ONCALL_ABLATE"] = a.ablate
+    os.environ["ONCALL_DEGRADE"] = a.degrade
     labels = json.load(open("eval/labels.json", encoding="utf-8")) if os.path.exists("eval/labels.json") else {}
     cfg = Config.from_env()
     rows = []
@@ -39,10 +44,23 @@ def main():
         cls_ok = bool(lab) and rc.get("fault_class") == lab.get("fault_class")
         esc = rep["status"] in ("escalated", "no_incident")
         # outcome scoring mirrors the brief: correct > honest escalation > confident wrong
-        outcome = ("correct" if comp_ok and not esc else "escalated" if esc else "WRONG") if lab else "unlabelled"
+        if lab and lab.get("component") == "none":       # the healthy drill: any action is a false alarm
+            comp_ok = esc = rep["status"] in ("no_incident", "escalated") or not rc.get("component")
+            outcome = "correct" if comp_ok else "WRONG"
+        else:
+            from oncall.triage import REMEDY
+            # no allowlisted fix exists for this fault (e.g. a lowered CPU limit): the right move IS to escalate
+            no_fix = lab is not None and lab.get("fault_class") in REMEDY and REMEDY[lab["fault_class"]] is None
+            if lab and no_fix and esc and comp_ok and cls_ok:
+                outcome = "correct"
+            else:
+                outcome = ("correct" if comp_ok and not esc else "escalated" if esc else "WRONG") if lab else "unlabelled"
+        sec = (lab or {}).get("secondary")
+        sec_ok = None if not sec else any(x.get("component") == sec["component"] for x in rc.get("secondary") or []) or \
+            any(x["component"] == sec["component"] for x in rep.get("triage", [])[1:3])
         rows.append({"bundle": name, "label": lab, "pred_component": rc.get("component"), "pred_class": rc.get("fault_class"),
                      "confidence": rep["confidence"], "status": rep["status"], "component_ok": comp_ok, "class_ok": cls_ok,
-                     "outcome": outcome, "schema_errors": rep.get("schema_errors"), "evidence_n": len(rep["evidence"])})
+                     "outcome": outcome, "secondary_found": sec_ok, "schema_errors": rep.get("schema_errors"), "evidence_n": len(rep["evidence"])})
     n = len([r for r in rows if r["label"]])
     summ = {k: sum(r["outcome"] == k for r in rows) for k in ("correct", "escalated", "WRONG", "unlabelled")}
     cal = {}
@@ -54,10 +72,10 @@ def main():
             c[1] += r["component_ok"]
     sha = report.git_sha()
     ts = time.strftime("%Y%m%d-%H%M%S")
-    out = {"ts": ts, "git": sha, "llm": a.llm, "summary": summ, "n_labelled": n, "calibration": cal, "rows": rows,
+    out = {"ts": ts, "git": sha, "llm": a.llm, "ablate": a.ablate, "summary": summ, "n_labelled": n, "calibration": cal, "rows": rows,
            "threshold": cfg.confidence_threshold}
     atomic_write(f"eval/results/{ts}_{sha}.json", json.dumps(out, indent=2, default=str))
-    md = [f"# Scoreboard ({ts}, git {sha}, llm={a.llm}, threshold={cfg.confidence_threshold})", "",
+    md = [f"# Scoreboard ({ts}, git {sha}, llm={a.llm}, ablate={a.ablate or 'none'}, degrade={a.degrade or 'none'}, threshold={cfg.confidence_threshold})", "",
           f"**{summ['correct']}/{n} correct, {summ['escalated']} escalated, {summ['WRONG']} wrong**", "",
           "| bundle | truth | predicted | conf | status | outcome |", "|---|---|---|---|---|---|"]
     for r in rows:
@@ -65,10 +83,10 @@ def main():
         md.append(f"| {r['bundle']} | {t} | {r['pred_component']}/{r['pred_class']} | {r['confidence']} | {r['status']} | {r['outcome']} |")
     md += ["", "## Calibration (confidence bucket -> accuracy)", "| bucket | n | accuracy |", "|---|---|---|"]
     md += [f"| {k} | {v[0]} | {v[1] / v[0]:.0%} |" for k, v in sorted(cal.items())]
-    atomic_write("eval/SCOREBOARD.md", "\n".join(md) + "\n")
+    atomic_write("eval/SCOREBOARD.md" if not (a.ablate or a.degrade) else f"eval/SCOREBOARD_ablate_{a.ablate.replace(',', '_')}_degrade_{a.degrade.replace(',', '_')}.md", "\n".join(md) + "\n")
     report.runlog({"command": "python eval/run_eval.py" + (" --llm" if a.llm else ""), "incident": f"{len(rows)} bundles",
                    "purpose": "offline evaluation", "result": f"{summ['correct']}/{n} correct, {summ['WRONG']} wrong"})
-    print("\n".join(md))
+    print("\n".join(md[:3]) if a.quiet else "\n".join(md))
 
 
 if __name__ == "__main__":

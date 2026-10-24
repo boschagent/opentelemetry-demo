@@ -9,7 +9,6 @@ import glob
 import json
 import os
 import subprocess
-import time
 
 from .core import atomic_write, now_iso
 
@@ -19,6 +18,7 @@ PREVENTION = {
     "oom": "Set memory limits with headroom, alert at 80% of limit, and fix unbounded caches (bounded LRU/TTL).",
     "memory_pressure": "Bound in-process caches (max size + TTL), alert on memory > 80% of limit, add memory-trend SLO.",
     "high_cpu": "Alert on sustained CPU > 80%, profile hot paths, add autoscaling / CPU limits per service.",
+    "memory_starved": "Restore the memory limit from config; review limit changes in config review; alert on OOM kills and on limit changes.",
     "cpu_starved": "Review resource limits (CPU quota was too low); alert on CPU throttling; capacity-plan limits in config review.",
     "dependency_unreachable": "Add timeouts, retries with backoff and a circuit breaker on the client; alert on connection errors.",
     "network_degradation": "Alert on client-vs-server latency gap per edge; add timeouts/retries; check network policies.",

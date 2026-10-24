@@ -1,0 +1,283 @@
+{
+  "incident_id": "INC-20261024-012209-rec_mem",
+  "status": "diagnosed",
+  "detected_at": "2026-10-24T01:22:09",
+  "alert": "practice incident 'rec_mem' (alert: on-call page)",
+  "root_cause": {
+    "component": "recommendation",
+    "fault_class": "service_down",
+    "summary": "recommendation: service down. container recommendation status=restarting exit_code=137 (also dependency_unreachable) 12 failed calls from frontend to recommendation never reached a recommendation server span",
+    "alternatives": [
+      "product-catalog [service_down] score=0.641",
+      "frontend [app_errors] score=0.35"
+    ],
+    "secondary": [
+      {
+        "component": "product-catalog",
+        "fault_class": "service_down"
+      }
+    ],
+    "mode": "triage-only",
+    "notes": []
+  },
+  "confidence": 0.877,
+  "evidence": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "source": "docker ps -a; docker inspect <all>",
+      "observation": "container recommendation status=restarting exit_code=137; (also dependency_unreachable) 12 failed calls from frontend to recommendation never reached a recommendation server span"
+    },
+    {
+      "id": "ev-006",
+      "tool": "find_error_traces",
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T19%3A42%3A28Z&query.start_time_max=2026-10-23T19%3A52%3A33Z&query.search_depth=100",
+      "observation": "container recommendation status=restarting exit_code=137; (also dependency_unreachable) 12 failed calls from frontend to recommendation never reached a recommendation server span"
+    }
+  ],
+  "proposed_action": {
+    "action": "restart_service",
+    "params": {
+      "service": "recommendation"
+    },
+    "reason": "recommendation diagnosed as service_down; restart is the allowlisted remedy (clears leaked memory/caches, crashed processes, wedged connections; restarts stopped containers)."
+  },
+  "approval": {
+    "approved": true,
+    "answer": "yes",
+    "approver": "Amrith",
+    "ts": 1792785150.724979,
+    "proposal": "91c94a5f",
+    "channel": "terminal"
+  },
+  "actions_taken": [
+    {
+      "ts": 1792785151.8020613,
+      "action": "restart_service",
+      "params": {
+        "service": "recommendation"
+      },
+      "dry_run": true,
+      "response": {
+        "ok": true,
+        "dry_run": true,
+        "would_run": "docker restart recommendation",
+        "current_state": "restarting"
+      }
+    }
+  ],
+  "verification": null,
+  "timeline": [
+    {
+      "time": "2026-10-24T01:22:09",
+      "event": "alert received: practice incident 'rec_mem' (alert: on-call page)"
+    },
+    {
+      "time": "2026-10-24T01:22:30",
+      "event": "triage: 3 suspects, top=recommendation/service_down"
+    },
+    {
+      "time": "2026-10-24T01:22:30",
+      "event": "diagnosis: recommendation [service_down] conf=0.877"
+    },
+    {
+      "time": "2026-10-24T01:22:30",
+      "event": "human approval: APPROVED"
+    },
+    {
+      "time": "2026-10-24T01:22:31",
+      "event": "action restart_service -> ok=True dry_run=True"
+    }
+  ],
+  "prevention": [
+    "Add a container liveness/readiness check with auto-restart policy and an alert on 'container not running' for >1 min."
+  ],
+  "reviewer": null,
+  "escalation_reason": "dry-run: no change was made",
+  "rejected_evidence": [],
+  "memory_hits": [
+    {
+      "incident_id": "INC-20261024-010916-quote_down",
+      "component": "quote",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "quote: service down. container quote status=exited exit_code=0 (also dependency_unreachable) 20 failed calls from shipping to quote never reached a quote server span"
+    },
+    {
+      "incident_id": "INC-20261024-005637-db_down",
+      "component": "astronomy-db",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "astronomy-db: service down. container astronomy-db status=exited exit_code=0"
+    },
+    {
+      "incident_id": "INC-20261024-004255-catalog_down",
+      "component": "product-catalog",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "product-catalog: service down. container product-catalog status=exited exit_code=137 (also dependency_unreachable) 33 failed calls from frontend to product-catalog never reached a product-catalog serv"
+    }
+  ],
+  "fewshot": [
+    {
+      "similarity": 0.848,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "resolved (verified)",
+      "source": "INC-20261023-224228-cart_down",
+      "shape": "cls:service_down, cls:dependency_unreachable, instrumented, combined"
+    }
+  ],
+  "llm": {
+    "model": null,
+    "calls": 0,
+    "tokens": 0
+  },
+  "investigation_transcript": [],
+  "triage": [
+    {
+      "component": "recommendation",
+      "fault_class": "service_down",
+      "score": 0.974,
+      "rationale": [
+        "container recommendation status=restarting exit_code=137",
+        "(also dependency_unreachable) 12 failed calls from frontend to recommendation never reached a recommendation server span"
+      ],
+      "evidence": [
+        "ev-001",
+        "ev-006"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "product-catalog",
+      "fault_class": "service_down",
+      "score": 0.641,
+      "rationale": [
+        "graph RCA: product-catalog ranks #1 (share 39%); own anomaly rps_down 3.7175->0.842 (z=7.7); its callers broke after it: frontend-proxy +0s"
+      ],
+      "evidence": [
+        "ev-010"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "frontend",
+      "fault_class": "app_errors",
+      "score": 0.35,
+      "rationale": [
+        "frontend logged 524 error/warn lines in the last 3 min (baseline 3)"
+      ],
+      "evidence": [
+        "ev-005"
+      ],
+      "suggested_action": "restart_service"
+    }
+  ],
+  "ledger": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "args": {},
+      "source": "docker ps -a; docker inspect <all>",
+      "summary": "23 demo containers (compose project 'opentelemetry-demo'); 22 running normally. Ignored 3 unrelated containers.\n  !! recommendation: status=restarting health=unhealthy restarts=12 oom=True exit=137 finished_at=2026-10-23T19:51:46.092702001Z",
+      "ts": 1792785130.9204175
+    },
+    {
+      "id": "ev-002",
+      "tool": "container_stats",
+      "args": {},
+      "source": "docker stats --no-stream",
+      "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nfrontend: cpu=17.27% mem=94.62% (236.6MiB / 250MiB)\nad: cpu=0.87% mem=91.88% (275.6MiB / 300MiB)\nopensearch: cpu=8.03% mem=91.48% (936.8MiB / 1GiB)\npayment: cpu=66.11% mem=87.65% (122.7MiB / 140MiB)\ncheckout: cpu=30.71% mem=77.48% (15.5MiB / 20MiB)\nproduct-catalog: cpu=31.7% mem=75.61% (15.12MiB / 20MiB)\nfrontend-proxy: cpu=10.35% mem=72.02% (64.82MiB / 90MiB)\nshipping: cpu=0.51% mem=70.53% (14.11MiB / 20MiB)\nemail: cpu=0.05% mem=68.04% (68.04MiB / 100MiB)\nastronomy-db: cpu=0.08% mem=65.22% (52.18MiB / 80MiB)\ngrafana: cpu=2.13% mem=64.59% (322.9MiB / 500MiB)\nvalkey-cart: cpu=0.22% mem=57.64% (11.53MiB / 20MiB)\nprometheus: cpu=2.23% mem=51.22% (102.4MiB / 200MiB)\nload-generator: cpu=4.09% mem=48.22% (723.3MiB / 1.465GiB)\nquote: cpu=0.02% mem=45.42% (18.17MiB / 40MiB)",
+      "ts": 1792785137.4433799
+    },
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "args": {},
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "summary": "Service RED, worst first:\nfrontend: rps=10.737 (base 10.268), err=16.3% (base 0.0%), p95=156.5ms (base 780.4ms)\nfrontend-proxy: rps=9.87 (base 10.552), err=9.0% (base 0.0%), p95=162.7ms (base 672.3ms)\ncart: rps=1.159 (base 1.059), err=0.0% (base 0.0%), p95=43.4ms (base 37.9ms)\ncurrency: rps=0.383 (base 0.783), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nimage-provider: rps=1.892 (base 2.692), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.192 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ncheckout: rps=0.033 (base 0.033), err=0.0% (base 0.0%), p95=9000.0ms (base 9500.0ms)\nemail: rps=0.033 (base 0.025), err=0.0% (base 0.0%), p95=42.0ms (base 47.0ms)\nquote: rps=0.142 (base 0.133), err=0.0% (base 0.0%), p95=16.0ms (base 18.0ms)\nad: rps=0.367 (base 0.292), err=0.0% (base 0.0%), p95=32.4ms (base 46.2ms)\nproduct-catalog: rps=0.742 (base 3.767), err=0.0% (base 0.0%), p95=836.7ms (base 1444.2ms)\nshipping: rps=0.183 (base 0.175), err=0.0% (base 0.0%), p95=49.6ms (base 197.5ms)\npayment: rps=0.033 (base 0.033), err=0.0% (base 0.0%), p95=3.9ms (base 42.0ms)\nrecommendation: rps=0.0 (base 0.617), err=0.0% (base 0.0%), p95=Nonems (base 744.0ms)",
+      "ts": 1792785137.57729
+    },
+    {
+      "id": "ev-004",
+      "tool": "service_graph",
+      "args": {
+        "lookback": "15m"
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend-proxy&query.start_time_min=2026-10-23T19%3A37%3A17Z&query.start_time_max=2026-10-23T19%3A52%3A22Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T19%3A37%3A17Z&query.start_time_max=2026-10-23T19%3A52%3A22Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-23T19%3A37%3A17Z&query.start_time_max=2026-10-23T19%3A52%3A22Z&query.search_depth=20",
+      "summary": "Learned 18 call edges from 60 traces:\ncart -> valkey-cart (238 calls)\nfrontend-proxy -> frontend (127 calls)\nproduct-catalog -> astronomy-db (125 calls)\nload-generator -> frontend-proxy (109 calls)\nfrontend -> cart (91 calls)\nfrontend -> product-catalog (85 calls)\ncheckout -> currency (59 calls)\ncheckout -> cart (40 calls)\ncheckout -> shipping (40 calls)\ncheckout -> product-catalog (39 calls)\ncheckout -> email (20 calls)\nshipping -> quote (20 calls)\nfrontend -> checkout (20 calls)\ncheckout -> payment (20 calls)\nfrontend-web -> frontend-proxy (6 calls)\nfrontend -> recommendation (3 calls)\nfrontend -> currency (1 calls)",
+      "ts": 1792785138.484113
+    },
+    {
+      "id": "ev-005",
+      "tool": "get_logs",
+      "args": {
+        "service": "frontend",
+        "minutes": 3
+      },
+      "source": "docker logs --since 3m --timestamps frontend",
+      "summary": "frontend: 1609 log lines in last 3m, 524 matched error/warn patterns.\n  x118: 2026-10-23T19:50:10.209931222Z {\"level\":50,\"time\":1792785010208,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"4e3f639b385d4605af3e18e96b4ab25f\",\"span_id\":\"2876285e77e571db\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 172.19.0.22:9001. Resolution note: \",\"stack\":\"Error: 14 UNAVAILABLE: No connection establish\n  x118: 2026-10-23T19:50:10.210438043Z Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 172.19.0.22:9001. Resolution note: \n  x118: 2026-10-23T19:50:10.210470837Z   details: 'No connection established. Last error: Error: connect EHOSTUNREACH 172.19.0.22:9001. Resolution note: ',\n  x36: 2026-10-23T19:49:23.708923349Z {\"level\":50,\"time\":1792784963708,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"c559488b20229b2c160381a73ca4ae2e\",\"span_id\":\"a196d2a37f76a703\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 172.19.0.22:9001. Resolution note: \",\"stack\":\"Error: 14 UNAVAILABLE: No connection establish\n  x36: 2026-10-23T19:49:23.713743151Z Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect ECONNREFUSED 172.19.0.22:9001. Resolution note: \n  x36: 2026-10-23T19:49:23.713923011Z   details: 'No connection established. Last error: Error: connect ECONNREFUSED 172.19.0.22:9001. Resolution note: ',\n  x19: 2026-10-23T19:49:28.295276701Z {\"level\":30,\"time\":1792784968294,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"2fc8acf6041ec6d395c7ed311cdfa500\",\"span_id\":\"22a5dd4914b2fa35\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/cart\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x9: 2026-10-23T19:50:06.020930570Z {\"level\":30,\"time\":1792785006017,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"684b2c2f836f0199db70178720a0923f\",\"span_id\":\"ec2a9d14e7e76a3a\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/data\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}",
+      "ts": 1792785142.9286435
+    },
+    {
+      "id": "ev-006",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "frontend",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-23T19%3A42%3A28Z&query.start_time_max=2026-10-23T19%3A52%3A33Z&query.search_depth=100",
+      "summary": "12 error traces for 'frontend' in last 10m.\n  client call from frontend to 'recommendation' failed with NO server span (callee unreachable?): 12 traces\n  example trace ids: 389ecb6ca457724cd92ee28afd090967, 26a31d2c22c2a9dc13218d0d0804a402, c5833c086c634e2c8c99c45cfdb79fd2, e1ca894e85be19bf804095cfb706940f, 732c16b29fca447dd38a6f7c65a1718f",
+      "ts": 1792785148.7088299
+    },
+    {
+      "id": "ev-007",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "checkout",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-23T19%3A42%3A28Z&query.start_time_max=2026-10-23T19%3A52%3A33Z&query.search_depth=100",
+      "summary": "3 error traces for 'checkout' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 2 traces\n  error ORIGINATES in checkout / POST: 1 traces  msg=\"context deadline exceeded\"\n  example trace ids: f332650286b8e73ea0002a0994afb4dd, 3e7ec5e1ce3b965fdfbab4f558c3ea9d, 4201040ebe215906372e5ce86b89f505",
+      "ts": 1792785150.2790346
+    },
+    {
+      "id": "ev-008",
+      "tool": "service_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))",
+      "summary": "14 services, 10 min history at 30s steps",
+      "ts": 1792785150.5195096
+    },
+    {
+      "id": "ev-009",
+      "tool": "container_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
+      "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
+      "ts": 1792785150.6407857
+    },
+    {
+      "id": "ev-010",
+      "tool": "graph_rca",
+      "args": {
+        "graph_edges": 28
+      },
+      "source": "rca.analyze over ev-008 + ev-009 on the merged call graph",
+      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: product-catalog 39%, recommendation 28%, frontend 27%, frontend-proxy 6%\n  root: product-catalog [service_down] - graph RCA: product-catalog ranks #1 (share 39%); own anomaly rps_down 3.7175->0.842 (z=7.7); its callers broke after it: frontend-proxy +0s",
+      "ts": 1792785150.667899
+    }
+  ],
+  "redactions": 2,
+  "schema_errors": []
+}

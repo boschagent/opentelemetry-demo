@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 
-from . import brain, report
+from . import brain, fewshot, report
 from .act import KillSwitch, RUNBOOK, ask_approval, call_action, check_kill, plan_action, verify
 from .core import Backend, Config, Ledger, now_iso
 from .triage import Triage, summarize
@@ -41,12 +42,17 @@ def investigate_incident(be: Backend, cfg: Config, alert: str, use_llm: bool, ac
         raw, transcript, rv = None, [], None
         top = tri["suspects"][0] if tri["suspects"] else {}
         mem = report.similar_incidents(top.get("component"), top.get("fault_class"))
+        tri["fewshot"] = [] if "fewshot" in os.environ.get("ONCALL_ABLATE", "") else \
+            fewshot.neighbors(tri, exclude=iid[5:] if iid.startswith("EVAL-") else None)
+        if tri["fewshot"]:
+            out(fewshot.prompt_text(tri["fewshot"]))
         if use_llm and llm.enabled and not tri["healthy"]:
             out(f"[{iid}] LLM investigation ({cfg.llm_model}) ...")
+            alert_ctx = alert
             if mem:
-                alert_ctx = alert + f"\nSimilar past incidents (memory, verify before trusting): {json.dumps(mem)[:800]}"
-            else:
-                alert_ctx = alert
+                alert_ctx += f"\nSimilar past incidents (memory, verify before trusting): {json.dumps(mem)[:800]}"
+            if tri["fewshot"]:
+                alert_ctx += "\n" + fewshot.prompt_text(tri["fewshot"])
             raw, transcript = brain.investigate(be, cfg, ledger, llm, tri, alert_ctx, out)
             timeline.append({"time": now_iso(), "event": f"LLM investigation finished ({len(transcript)} steps)"})
             if raw:
@@ -58,9 +64,10 @@ def investigate_incident(be: Backend, cfg: Config, alert: str, use_llm: bool, ac
                                    "alternatives": diag["alternatives"], "secondary": diag["secondary"], "mode": diag["mode"],
                                    "notes": diag["notes"]},
                     "confidence": diag["confidence"], "evidence": diag["evidence"], "reviewer": rv,
-                    "rejected_evidence": diag["rejected_evidence"], "memory_hits": mem,
+                    "rejected_evidence": diag["rejected_evidence"], "memory_hits": mem, "fewshot": tri.get("fewshot"),
                     "llm": {"model": cfg.llm_model if raw else None, "calls": llm.calls, "tokens": llm.tokens},
                     "investigation_transcript": transcript, "triage": tri["suspects"][:6],
+                    "rca": (tri.get("signals") or {}).get("rca"), "combination": tri.get("combination"),
                     "ledger": ledger.to_list(), "redactions": ledger.redactions})
         timeline.append({"time": now_iso(), "event": f"diagnosis: {diag['component']} [{diag['fault_class']}] conf={diag['confidence']}"})
         if diag["fault_class"]:
@@ -89,7 +96,7 @@ def investigate_incident(be: Backend, cfg: Config, alert: str, use_llm: bool, ac
         if not appr["approved"]:
             rep["status"] = "rejected_by_human"
             return finish(rep, out)
-        res = call_action(be, cfg, plan, appr["approver"])
+        res = call_action(be, cfg, plan, appr["approver"], appr.get("proposal"))
         rep["actions_taken"].append({"ts": time.time(), "action": plan["action"], "params": plan["params"],
                                      "dry_run": cfg.dry_run, "response": res})
         timeline.append({"time": now_iso(), "event": f"action {plan['action']} -> ok={res.get('ok')} dry_run={cfg.dry_run}"})
@@ -107,6 +114,8 @@ def investigate_incident(be: Backend, cfg: Config, alert: str, use_llm: bool, ac
         timeline.append({"time": now_iso(), "event": f"verification: recovered={v['recovered']}"})
         if v["recovered"]:
             rep["status"] = "resolved"
+            # learning from experience: a fix that was applied AND verified becomes a labelled few-shot example
+            fewshot.add(tri, diag["fault_class"], iid, plan["action"], "resolved (verified)")
         else:
             inv = RUNBOOK[plan["action"]]["inverse"]
             prev = res.get("previous_users")
@@ -165,10 +174,13 @@ def main(argv=None) -> int:
     p.add_argument("--mode", default="live", choices=["live", "record", "replay"])
     p.add_argument("--bundle")
     p.add_argument("--id")
+    p.add_argument("--web-approve", action="store_true", help="approve on the Action API web page instead of the terminal")
     a = p.parse_args(argv)
     cfg = Config.from_env()
     if a.execute:
         cfg.dry_run = False
+    if a.web_approve:
+        cfg.approve_mode = "web"
     be = Backend(a.mode, a.bundle)
     cmd = "python -m oncall.run " + " ".join(argv if argv is not None else sys.argv[1:])
     try:
