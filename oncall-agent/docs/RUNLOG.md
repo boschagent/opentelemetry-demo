@@ -16,3 +16,7 @@
 | 2026-10-24T01:47:12 | a419e6f8 | `python -m oncall.drill run combo_cart_ad` | INC-20261024-014653-combo_cart_ad | practice combo_cart_ad | CORRECT: cart/service_down conf=0.896 status=diagnosed | truth=cart/service_down llm=off |
 | 2026-10-24T01:47:31 | a419e6f8 | `python eval/run_eval.py` | 10 bundles | offline evaluation | 9/10 correct, 0 wrong |  |
 | 2026-10-24T10:14:28 | a419e6f8 | `python -m oncall.drill run cart_down` | INC-20261024-101245-cart_down | practice cart_down | CORRECT: cart/service_down conf=0.898 status=resolved | truth=cart/service_down llm=llama-3.3-70b-versatile |
+| 2026-10-24T12:06:39 | 66a5bf3d | `python eval/run_eval.py` | 10 bundles | offline evaluation | 10/10 correct, 0 wrong |  |
+| 2026-10-24T12:26:23 | 66a5bf3d | `python eval/run_eval.py` | 10 bundles | offline evaluation | 10/10 correct, 0 wrong |  |
+| 2026-10-24T14:14:17 | 66a5bf3d | `python eval/run_eval.py` | 10 bundles | offline evaluation | 10/10 correct, 0 wrong |  |
+| 2026-10-24T14:44:21 | 66a5bf3d | `python eval/run_eval.py` | 10 bundles | offline evaluation | 10/10 correct, 0 wrong |  |

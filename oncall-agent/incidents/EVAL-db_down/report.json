@@ -1,28 +1,40 @@
 {
   "incident_id": "EVAL-db_down",
   "status": "diagnosed",
-  "detected_at": "2026-10-24T01:47:25",
+  "detected_at": "2026-10-24T14:44:09",
   "alert": "eval db_down",
   "root_cause": {
     "component": "astronomy-db",
     "fault_class": "service_down",
-    "summary": "astronomy-db: service down. container astronomy-db status=exited exit_code=0",
+    "summary": "astronomy-db: service down. container astronomy-db status=exited exit_code=0.",
     "alternatives": [
-      "currency [service_down] score=0.593",
-      "recommendation [latency_degradation] score=0.5",
-      "frontend [app_errors] score=0.35"
+      "recommendation [service_down] score=0.8",
+      "currency [service_down] score=0.6",
+      "frontend [app_errors] score=0.175"
     ],
-    "secondary": [],
+    "secondary": [
+      {
+        "component": "recommendation",
+        "fault_class": "service_down"
+      },
+      {
+        "component": "currency",
+        "fault_class": "service_down"
+      }
+    ],
     "mode": "triage-only",
-    "notes": []
+    "notes": [
+      "runner-up suspect nearly as strong",
+      "few-shot memory agrees (0.87 similar past incident was service_down)"
+    ]
   },
-  "confidence": 0.81,
+  "confidence": 0.683,
   "evidence": [
     {
       "id": "ev-001",
       "tool": "container_health",
       "source": "docker ps -a; docker inspect <all>",
-      "observation": "container astronomy-db status=exited exit_code=0"
+      "observation": "!! astronomy-db: status=exited health=unhealthy restarts=0 oom=True exit=0 finished_at=2026-10-23T19:22:33.883485549Z"
     }
   ],
   "proposed_action": {
@@ -37,16 +49,16 @@
   "verification": null,
   "timeline": [
     {
-      "time": "2026-10-24T01:47:25",
+      "time": "2026-10-24T14:44:09",
       "event": "alert received: eval db_down"
     },
     {
-      "time": "2026-10-24T01:47:26",
+      "time": "2026-10-24T14:44:11",
       "event": "triage: 4 suspects, top=astronomy-db/service_down"
     },
     {
-      "time": "2026-10-24T01:47:26",
-      "event": "diagnosis: astronomy-db [service_down] conf=0.81"
+      "time": "2026-10-24T14:44:11",
+      "event": "diagnosis: astronomy-db [service_down] conf=0.683"
     }
   ],
   "prevention": [
@@ -56,6 +68,14 @@
   "escalation_reason": null,
   "rejected_evidence": [],
   "memory_hits": [
+    {
+      "incident_id": "EVAL-db_down",
+      "component": "astronomy-db",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "astronomy-db: service down. container astronomy-db status=exited exit_code=0."
+    },
     {
       "incident_id": "INC-20261024-005637-db_down",
       "component": "astronomy-db",
@@ -70,25 +90,33 @@
       "fault_class": "service_down",
       "action": "restart_service",
       "status": "diagnosed",
-      "summary": "cart: service down. container cart status=exited exit_code=0"
-    },
-    {
-      "incident_id": "EVAL-catalog_down",
-      "component": "product-catalog",
-      "fault_class": "service_down",
-      "action": "restart_service",
-      "status": "diagnosed",
-      "summary": "product-catalog: service down. container product-catalog status=exited exit_code=137"
+      "summary": "cart: service down. container cart status=exited exit_code=0; cart stopped serving: 0.0/s now vs 1.259/s at baseline, and none of its callers went quiet."
     }
   ],
   "fewshot": [
     {
-      "similarity": 0.5,
+      "similarity": 0.866,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "valkey",
+      "shape": "cls:service_down, others_disturbed, rca_agrees"
+    },
+    {
+      "similarity": 0.849,
       "fault_class": "service_down",
       "action": "restart_service",
       "outcome": "resolved (verified)",
-      "source": "INC-20261023-224228-cart_down",
-      "shape": "cls:service_down, cls:dependency_unreachable, instrumented, combined"
+      "source": "INC-20261024-121442-payment_paused",
+      "shape": "cls:service_down, instrumented, others_disturbed, combined, rca_agrees"
+    },
+    {
+      "similarity": 0.75,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "catalog_down",
+      "shape": "cls:service_down, instrumented, others_disturbed, rca_agrees"
     }
   ],
   "llm": {
@@ -111,23 +139,24 @@
       "suggested_action": "restart_service"
     },
     {
-      "component": "currency",
+      "component": "recommendation",
       "fault_class": "service_down",
-      "score": 0.593,
+      "score": 0.8,
       "rationale": [
-        "graph RCA: currency ranks #2 (share 10%); own anomaly rps_down 0.6253->0.075 (z=8.8); its callers broke after it: "
+        "recommendation stopped serving: 0.05/s now vs 0.468/s at baseline, and none of its callers went quiet",
+        "(also latency_degradation) recommendation p95 8500.0ms vs baseline 1520.0ms (x5.59)"
       ],
       "evidence": [
-        "ev-012"
+        "ev-003"
       ],
       "suggested_action": "restart_service"
     },
     {
-      "component": "recommendation",
-      "fault_class": "latency_degradation",
-      "score": 0.5,
+      "component": "currency",
+      "fault_class": "service_down",
+      "score": 0.6,
       "rationale": [
-        "recommendation p95 8500.0ms vs baseline 1520.0ms (x5.59)"
+        "currency stopped serving: 0.058/s now vs 0.577/s at baseline, and none of its callers went quiet"
       ],
       "evidence": [
         "ev-003"
@@ -137,9 +166,10 @@
     {
       "component": "frontend",
       "fault_class": "app_errors",
-      "score": 0.35,
+      "score": 0.175,
       "rationale": [
-        "frontend logged 265 error/warn lines in the last 3 min (baseline 3)"
+        "frontend logged 265 error/warn lines in the last 3 min (baseline 3)",
+        "its dependency ['currency', 'recommendation'] is down, so this is most likely a symptom"
       ],
       "evidence": [
         "ev-004"
@@ -147,6 +177,129 @@
       "suggested_action": "restart_service"
     }
   ],
+  "rca": {
+    "roots": [
+      {
+        "node": "astronomy-db",
+        "service": "astronomy-db",
+        "fault_class": "service_down",
+        "share": 0.253,
+        "a": 1.0,
+        "why": "graph RCA: astronomy-db ranks #1 (share 25%); evidence: Docker reports it service down; its callers broke after it: checkout +61s, frontend +61s",
+        "latency_only": false,
+        "onset_rel_s": -271
+      },
+      {
+        "node": "currency",
+        "service": "currency",
+        "fault_class": "service_down",
+        "share": 0.144,
+        "a": 1.0,
+        "why": "graph RCA: currency ranks #2 (share 14%); evidence: traffic 0.6253 -> 0.075 (robust z=8.8); Docker reports it service down; its callers broke after it: checkout +62s, frontend +62s, frontend-proxy +62s",
+        "latency_only": false,
+        "onset_rel_s": -272
+      }
+    ],
+    "anomalous": {
+      "cart": {
+        "a": 1.0,
+        "kinds": [
+          "p95"
+        ]
+      },
+      "checkout": {
+        "a": 1.0,
+        "kinds": [
+          "err"
+        ]
+      },
+      "currency": {
+        "a": 1.0,
+        "kinds": [
+          "down",
+          "rps_down"
+        ]
+      },
+      "frontend": {
+        "a": 1.0,
+        "kinds": [
+          "err",
+          "p95"
+        ]
+      },
+      "frontend-proxy": {
+        "a": 1.0,
+        "kinds": [
+          "err",
+          "p95"
+        ]
+      },
+      "image-provider": {
+        "a": 0.907,
+        "kinds": [
+          "rps_down"
+        ]
+      },
+      "product-catalog": {
+        "a": 1.0,
+        "kinds": [
+          "err",
+          "p95"
+        ]
+      },
+      "recommendation": {
+        "a": 1.0,
+        "kinds": [
+          "down",
+          "err",
+          "p95",
+          "rps_down"
+        ]
+      },
+      "astronomy-db": {
+        "a": 1.0,
+        "kinds": [
+          "down"
+        ]
+      }
+    },
+    "ranking": [
+      [
+        "astronomy-db",
+        0.253
+      ],
+      [
+        "currency",
+        0.144
+      ],
+      [
+        "cart",
+        0.124
+      ],
+      [
+        "product-catalog",
+        0.119
+      ],
+      [
+        "frontend",
+        0.1
+      ],
+      [
+        "checkout",
+        0.083
+      ],
+      [
+        "image-provider",
+        0.079
+      ],
+      [
+        "recommendation",
+        0.06
+      ]
+    ],
+    "combined": true
+  },
+  "combination": true,
   "ledger": [
     {
       "id": "ev-001",
@@ -154,7 +307,7 @@
       "args": {},
       "source": "docker ps -a; docker inspect <all>",
       "summary": "23 demo containers (compose project 'opentelemetry-demo'); 22 running normally. Ignored 3 unrelated containers.\n  !! astronomy-db: status=exited health=unhealthy restarts=0 oom=True exit=0 finished_at=2026-10-23T19:22:33.883485549Z",
-      "ts": 1792786645.774966
+      "ts": 1792833249.936784
     },
     {
       "id": "ev-002",
@@ -162,15 +315,15 @@
       "args": {},
       "source": "docker stats --no-stream",
       "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nfrontend: cpu=6.09% mem=94.52% (236.3MiB / 250MiB)\nopensearch: cpu=4.65% mem=91.52% (937.2MiB / 1GiB)\nad: cpu=1.18% mem=88.43% (265.3MiB / 300MiB)\nquote: cpu=0.02% mem=78.86% (31.54MiB / 40MiB)\nproduct-catalog: cpu=6.63% mem=74.0% (14.8MiB / 20MiB)\npayment: cpu=1.49% mem=72.5% (101.5MiB / 140MiB)\nfrontend-proxy: cpu=9.11% mem=70.48% (63.43MiB / 90MiB)\nshipping: cpu=1.02% mem=69.32% (13.86MiB / 20MiB)\ncheckout: cpu=0.03% mem=69.2% (13.84MiB / 20MiB)\ngrafana: cpu=4.33% mem=66.23% (331.2MiB / 500MiB)\nemail: cpu=0.05% mem=65.91% (65.91MiB / 100MiB)\nvalkey-cart: cpu=5.69% mem=63.36% (12.67MiB / 20MiB)\nrecommendation: cpu=6.04% mem=56.99% (284.9MiB / 500MiB)\nprometheus: cpu=0.51% mem=50.1% (100.2MiB / 200MiB)\nload-generator: cpu=36.37% mem=46.57% (698.5MiB / 1.465GiB)",
-      "ts": 1792786645.780627
+      "ts": 1792833249.9450877
     },
     {
       "id": "ev-003",
       "tool": "service_red",
       "args": {},
       "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
-      "summary": "Service RED, worst first:\nrecommendation: rps=0.05 (base 0.468), err=100.0% (base 0.0%), p95=8500.0ms (base 1520.0ms)\nproduct-catalog: rps=0.558 (base 2.836), err=100.0% (base 0.0%), p95=8711.5ms (base 4059.6ms)\ncheckout: rps=0.017 (base 0.025), err=100.0% (base 33.3%), p95=9500.0ms (base 15000.0ms)\nfrontend: rps=3.067 (base 6.852), err=33.7% (base 2.7%), p95=7032.3ms (base 2439.2ms)\nfrontend-proxy: rps=2.351 (base 6.595), err=22.3% (base 1.7%), p95=7911.8ms (base 1636.7ms)\ncart: rps=0.35 (base 0.694), err=0.0% (base 0.0%), p95=45.1ms (base 45.0ms)\ncurrency: rps=0.058 (base 0.577), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.192 (base 0.184), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nimage-provider: rps=0.408 (base 1.379), err=0.0% (base 0.0%), p95=1.9ms (base 2.0ms)\nad: rps=0.15 (base 0.184), err=0.0% (base 0.0%), p95=55.0ms (base 95.0ms)\nemail: rps=0.0 (base 0.017), err=0.0% (base 0.0%), p95=Nonems (base 380.0ms)\npayment: rps=0.0 (base 0.017), err=0.0% (base 0.0%), p95=Nonems (base 390.0ms)\nquote: rps=0.0 (base 0.042), err=0.0% (base 0.0%), p95=Nonems (base 1.9ms)\nshipping: rps=0.0 (base 0.059), err=0.0% (base 0.0%), p95=Nonems (base 930.0ms)",
-      "ts": 1792786645.781918
+      "summary": "Service RED, worst first:\nrecommendation: rps=0.05 (base 0.468), err=100.0% (base 0.0%), p95=8500.0ms (base 1520.0ms)\nproduct-catalog: rps=0.558 (base 2.836), err=100.0% (base 0.0%), p95=8711.5ms (base 4059.6ms)\ncheckout: rps=0.017 (base 0.025), err=100.0% (base 33.3%), p95=9500.0ms (base 15000.0ms)\nfrontend: rps=3.067 (base 6.852), err=33.7% (base 2.7%), p95=7032.3ms (base 2439.2ms)\nfrontend-proxy: rps=2.351 (base 6.595), err=22.3% (base 1.7%), p95=7911.8ms (base 1636.7ms)\ncart: rps=0.35 (base 0.694), err=0.0% (base 0.0%), p95=45.1ms (base 45.0ms)\ncurrency: rps=0.058 (base 0.577), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.192 (base 0.184), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nimage-provider: rps=0.408 (base 1.379), err=0.0% (base 0.0%), p95=1.9ms (base 2.0ms)\nad: rps=0.15 (base 0.184), err=0.0% (base 0.0%), p95=55.0ms (base 95.0ms)\nemail: rps=0.0 (base 0.017), err=0.0% (base 0.0%), p95=n/a (base 380.0ms)\npayment: rps=0.0 (base 0.017), err=0.0% (base 0.0%), p95=n/a (base 390.0ms)\nquote: rps=0.0 (base 0.042), err=0.0% (base 0.0%), p95=n/a (base 1.9ms)\nshipping: rps=0.0 (base 0.059), err=0.0% (base 0.0%), p95=n/a (base 930.0ms)",
+      "ts": 1792833249.9473598
     },
     {
       "id": "ev-004",
@@ -181,7 +334,7 @@
       },
       "source": "docker logs --since 3m --timestamps frontend",
       "summary": "frontend: 1171 log lines in last 3m, 265 matched error/warn patterns.\n  x54: 2026-10-23T19:23:55.923983499Z {\"level\":50,\"time\":1792783435922,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"84c39b096c1af63b974a1fbd64731d9c\",\"span_id\":\"edf3072972ac3ddc\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"13 INTERNAL: failed to load products: failed to query products: dial tcp: lookup astronomy-db on 127.0.0.11:53: no such host\",\"stack\":\"Error: 13 INTERNAL: failed to load produ\n  x54: 2026-10-23T19:23:55.935113928Z Error: 13 INTERNAL: failed to load products: failed to query products: dial tcp: lookup astronomy-db on 127.0.0.11:53: no such host\n  x54: 2026-10-23T19:23:55.935194525Z   details: 'failed to load products: failed to query products: dial tcp: lookup astronomy-db on 127.0.0.11:53: no such host',\n  x8: 2026-10-23T19:24:17.370079950Z {\"level\":50,\"time\":1792783457356,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"0e8cb524b5e6d605d64c956296f6c235\",\"span_id\":\"22f4ea39a01ebc1e\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"5 NOT_FOUND: Product Not Found: OLJCESPC7Z\",\"stack\":\"Error: 5 NOT_FOUND: Product Not Found: OLJCESPC7Z\\n    at callErrorFromStatus (/app/node_modules/@grpc/grpc-js/build/src/c\n  x8: 2026-10-23T19:24:17.359091578Z Error: 5 NOT_FOUND: Product Not Found: OLJCESPC7Z\n  x7: 2026-10-23T19:24:17.370021370Z {\"level\":50,\"time\":1792783457344,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"a5ad49b26c7af07027ea0b11c8734b1e\",\"span_id\":\"acef31749567183a\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"5 NOT_FOUND: Product Not Found: 1YMWWN1N4O\",\"stack\":\"Error: 5 NOT_FOUND: Product Not Found: 1YMWWN1N4O\\n    at callErrorFromStatus (/app/node_modules/@grpc/grpc-js/build/src/c\n  x7: 2026-10-23T19:24:30.169370522Z {\"level\":50,\"time\":1792783470158,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"ab13d924c37565a9213711a9ba51ee57\",\"span_id\":\"b14e74bd98916c95\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"5 NOT_FOUND: Product Not Found: 66VCHSJNUP\",\"stack\":\"Error: 5 NOT_FOUND: Product Not Found: 66VCHSJNUP\\n    at callErrorFromStatus (/app/node_modules/@grpc/grpc-js/build/src/c\n  x7: 2026-10-23T19:24:17.354866873Z Error: 5 NOT_FOUND: Product Not Found: 1YMWWN1N4O",
-      "ts": 1792786645.8919983
+      "ts": 1792833251.0505579
     },
     {
       "id": "ev-005",
@@ -193,7 +346,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=recommendation&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=recommendation&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%2",
-      "ts": 1792786645.8992112
+      "ts": 1792833251.0607932
     },
     {
       "id": "ev-006",
@@ -205,7 +358,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=product-catalog&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=product-catalog&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%",
-      "ts": 1792786645.8994231
+      "ts": 1792833251.0609274
     },
     {
       "id": "ev-007",
@@ -217,7 +370,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
-      "ts": 1792786645.8995328
+      "ts": 1792833251.0610385
     },
     {
       "id": "ev-008",
@@ -229,7 +382,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
-      "ts": 1792786645.89963
+      "ts": 1792833251.0611277
     },
     {
       "id": "ev-009",
@@ -241,7 +394,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=5m&limit=30",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=5m&limit=30",
-      "ts": 1792786645.8997135
+      "ts": 1792833251.0612032
     },
     {
       "id": "ev-010",
@@ -251,7 +404,7 @@
       },
       "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))",
       "summary": "14 services, 10 min history at 30s steps",
-      "ts": 1792786645.9076486
+      "ts": 1792833251.0660493
     },
     {
       "id": "ev-011",
@@ -261,7 +414,7 @@
       },
       "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
       "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
-      "ts": 1792786646.3188877
+      "ts": 1792833251.1235516
     },
     {
       "id": "ev-012",
@@ -270,8 +423,8 @@
         "graph_edges": 28
       },
       "source": "rca.analyze over ev-010 + ev-011 on the merged call graph",
-      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: astronomy-db 27%, cart 14%, product-catalog 13%, currency 10%, frontend 10%, image-provider 8%\n  root: astronomy-db [service_down] - graph RCA: astronomy-db ranks #1 (share 27%); own anomaly down up->service_down (z=99.0); its callers broke after it: checkout +61s, frontend +61s, frontend-proxy +61s\n  root: currency [service_down] - graph RCA: currency ranks #2 (share 10%); own anomaly rps_down 0.6253->0.075 (z=8.8); its callers broke after it: \n  TWO independent roots: possible combined incident.",
-      "ts": 1792786646.3325322
+      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: astronomy-db 25%, currency 14%, cart 12%, product-catalog 12%, frontend 10%, checkout 8%\n  root: astronomy-db [service_down] - graph RCA: astronomy-db ranks #1 (share 25%); evidence: Docker reports it service down; its callers broke after it: checkout +61s, frontend +61s\n  root: currency [service_down] - graph RCA: currency ranks #2 (share 14%); evidence: traffic 0.6253 -> 0.075 (robust z=8.8); Docker reports it service down; its callers broke after it: checkout +62s, frontend +62s, frontend-proxy +62s\n  TWO independent roots: possible combined incident.",
+      "ts": 1792833251.2547894
     }
   ],
   "redactions": 0,

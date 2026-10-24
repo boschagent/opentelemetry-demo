@@ -1,0 +1,394 @@
+{
+  "incident_id": "INC-20261024-144026",
+  "status": "resolved",
+  "detected_at": "2026-10-24T14:40:26",
+  "alert": "on-call page: the shop's alert fired; nothing else is known",
+  "root_cause": {
+    "component": "payment",
+    "fault_class": "service_down",
+    "summary": "The payment container is paused (status=paused, health=unhealthy, exit_code=0), so it is not processing requests, causing downstream errors and increased error rate in frontend\u2011proxy.",
+    "alternatives": [
+      "frontend-proxy app_errors due to misconfiguration"
+    ],
+    "secondary": [],
+    "mode": "llm+triage",
+    "notes": [
+      "few-shot memory agrees (0.97 similar past incident was service_down)"
+    ]
+  },
+  "confidence": 0.928,
+  "evidence": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "source": "docker ps -a; docker inspect <all>",
+      "observation": "container payment status=paused health=unhealthy exit_code=0"
+    }
+  ],
+  "proposed_action": {
+    "action": "restart_service",
+    "params": {
+      "service": "payment"
+    },
+    "reason": "payment diagnosed as service_down; restart is the allowlisted remedy (clears leaked memory/caches, crashed processes, wedged connections; restarts stopped containers)."
+  },
+  "approval": {
+    "approved": true,
+    "answer": "yes",
+    "approver": "Amrith",
+    "ts": 1792833096.5878332,
+    "proposal": "a5f3cc4a",
+    "channel": "demo page"
+  },
+  "actions_taken": [
+    {
+      "ts": 1792833099.5775132,
+      "action": "restart_service",
+      "params": {
+        "service": "payment"
+      },
+      "dry_run": false,
+      "response": {
+        "ok": true,
+        "ran": "docker unpause payment",
+        "output": "payment",
+        "previous_state": "paused"
+      }
+    }
+  ],
+  "verification": {
+    "recovered": true,
+    "checks": [
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 2,
+          "errors_cleared": false
+        },
+        "ts": 1792833124.5719624
+      },
+      {
+        "healthy": false,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 2,
+          "errors_cleared": false
+        },
+        "ts": 1792833151.3116403
+      },
+      {
+        "healthy": true,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 1,
+          "errors_cleared": true
+        },
+        "ts": 1792833177.9916487
+      },
+      {
+        "healthy": true,
+        "checks": {
+          "container_running": true,
+          "recent_error_traces": 1,
+          "errors_cleared": true
+        },
+        "ts": 1792833204.6322744
+      }
+    ]
+  },
+  "timeline": [
+    {
+      "time": "2026-10-24T14:40:26",
+      "event": "alert received: on-call page: the shop's alert fired; nothing else is known"
+    },
+    {
+      "time": "2026-10-24T14:40:55",
+      "event": "triage: 3 suspects, top=payment/service_down"
+    },
+    {
+      "time": "2026-10-24T14:40:57",
+      "event": "LLM investigation finished (1 steps)"
+    },
+    {
+      "time": "2026-10-24T14:40:58",
+      "event": "reviewer verdict: agree"
+    },
+    {
+      "time": "2026-10-24T14:40:58",
+      "event": "diagnosis: payment [service_down] conf=0.928"
+    },
+    {
+      "time": "2026-10-24T14:41:36",
+      "event": "human approval: APPROVED"
+    },
+    {
+      "time": "2026-10-24T14:41:39",
+      "event": "action restart_service -> ok=True dry_run=False"
+    },
+    {
+      "time": "2026-10-24T14:43:24",
+      "event": "verification: recovered=True"
+    }
+  ],
+  "prevention": [
+    "Add a container liveness/readiness check with auto-restart policy and an alert on 'container not running' for >1 min."
+  ],
+  "reviewer": {
+    "verdict": "agree",
+    "reason": "ev-001 directly shows the payment container is paused and unhealthy, matching the service_down fault class and explaining downstream errors; no evidence contradicts this or points to another origin.",
+    "better_component": null
+  },
+  "escalation_reason": null,
+  "rejected_evidence": [],
+  "memory_hits": [
+    {
+      "incident_id": "EVAL-payment_paused",
+      "component": "payment",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "payment: service down. container payment status=paused exit_code=0."
+    },
+    {
+      "incident_id": "INC-20261024-121442-payment_paused",
+      "component": "payment",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "resolved",
+      "summary": "The payment container is paused (status=paused, health=unhealthy, exit_code=0) and not processing requests, causing downstream callers to see errors and high latency. No internal errors are logged; th"
+    },
+    {
+      "incident_id": "INC-20261024-003209-payment_paused",
+      "component": "payment",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "payment: service down. container payment status=paused exit_code=0 (also memory_pressure) graph RCA: payment ranks #1 (share 53%); own anomaly mem 73.1445->81.9392 (z=8.8)"
+    }
+  ],
+  "fewshot": [
+    {
+      "similarity": 0.97,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "resolved (verified)",
+      "source": "INC-20261024-121442-payment_paused",
+      "shape": "cls:service_down, instrumented, others_disturbed, combined, rca_agrees"
+    },
+    {
+      "similarity": 0.832,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "quote_down",
+      "shape": "cls:service_down, instrumented, others_disturbed, rca_agrees"
+    },
+    {
+      "similarity": 0.75,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "catalog_down",
+      "shape": "cls:service_down, instrumented, others_disturbed, rca_agrees"
+    }
+  ],
+  "llm": {
+    "model": "openai/gpt-oss-120b",
+    "calls": 2,
+    "tokens": 2618
+  },
+  "investigation_transcript": [
+    {
+      "step": 0,
+      "final": {
+        "component": "payment",
+        "fault_class": "service_down",
+        "summary": "The payment container is paused (status=paused, health=unhealthy, exit_code=0), so it is not processing requests, causing downstream errors and increased error rate in frontend\u2011proxy.",
+        "confidence": 0.94,
+        "evidence": [
+          {
+            "id": "ev-001",
+            "observation": "container payment status=paused health=unhealthy exit_code=0"
+          }
+        ],
+        "alternatives": [
+          "frontend-proxy app_errors due to misconfiguration"
+        ],
+        "secondary": []
+      }
+    }
+  ],
+  "triage": [
+    {
+      "component": "payment",
+      "fault_class": "service_down",
+      "score": 0.9,
+      "rationale": [
+        "container payment status=paused exit_code=0"
+      ],
+      "evidence": [
+        "ev-001"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "frontend-proxy",
+      "fault_class": "app_errors",
+      "score": 0.85,
+      "rationale": [
+        "39 error traces originate in frontend-proxy / router frontend egress (100% of failing requests)"
+      ],
+      "evidence": [
+        "ev-007"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "product-catalog",
+      "fault_class": "high_cpu",
+      "score": 0.6,
+      "rationale": [
+        "product-catalog using 352.03% CPU (healthy baseline 73.67% mem / 16.95% cpu)"
+      ],
+      "evidence": [
+        "ev-002"
+      ],
+      "suggested_action": "restart_service"
+    }
+  ],
+  "rca": {
+    "roots": [
+      {
+        "node": "payment",
+        "service": "payment",
+        "fault_class": "service_down",
+        "share": 1.0,
+        "a": 1.0,
+        "why": "graph RCA: payment ranks #1 (share 100%); evidence: Docker reports it service down",
+        "latency_only": false,
+        "onset_rel_s": null
+      }
+    ],
+    "anomalous": {
+      "payment": {
+        "a": 1.0,
+        "kinds": [
+          "down"
+        ]
+      }
+    },
+    "ranking": [
+      [
+        "payment",
+        1.0
+      ]
+    ],
+    "combined": false
+  },
+  "combination": true,
+  "ledger": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "args": {},
+      "source": "docker ps -a; docker inspect <all>",
+      "summary": "23 demo containers (compose project 'opentelemetry-demo'); 22 running normally. Ignored 3 unrelated containers.\n  !! payment: status=paused health=unhealthy restarts=0 oom=False exit=0 finished_at=2026-10-24T07:41:29.965161557Z",
+      "ts": 1792833030.1883607
+    },
+    {
+      "id": "ev-002",
+      "tool": "container_stats",
+      "args": {},
+      "source": "docker stats --no-stream",
+      "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=352.03% mem=74.08% (14.82MiB / 20MiB)\nopensearch: cpu=2.51% mem=98.72% (1011MiB / 1GiB)\ncheckout: cpu=90.42% mem=70.27% (14.05MiB / 20MiB)\nad: cpu=1.84% mem=83.41% (250.2MiB / 300MiB)\nemail: cpu=0.2% mem=80.96% (80.96MiB / 100MiB)\nastronomy-db: cpu=0.9% mem=80.56% (64.45MiB / 80MiB)\nquote: cpu=0.04% mem=79.21% (31.68MiB / 40MiB)\npayment: cpu=0.0% mem=73.0% (102.2MiB / 140MiB)\ngrafana: cpu=3.5% mem=71.88% (359.4MiB / 500MiB)\nfrontend-proxy: cpu=8.01% mem=70.37% (63.34MiB / 90MiB)\nfrontend: cpu=2.0% mem=68.96% (172.4MiB / 250MiB)\nprometheus: cpu=1.69% mem=61.77% (123.5MiB / 200MiB)\nshipping: cpu=1.72% mem=59.1% (11.82MiB / 20MiB)\nvalkey-cart: cpu=0.38% mem=53.93% (10.79MiB / 20MiB)\nrecommendation: cpu=13.82% mem=49.15% (245.8MiB / 500MiB)",
+      "ts": 1792833038.2363791
+    },
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "args": {},
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "summary": "Service RED, worst first:\nfrontend-proxy: rps=3.034 (base 4.209), err=8.0% (base 3.6%), p95=14727.3ms (base 11484.4ms)\ncurrency: rps=0.292 (base 0.217), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nfrontend: rps=3.351 (base 4.225), err=0.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\nquote: rps=0.017 (base 0.017), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.2 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ncart: rps=0.367 (base 0.5), err=0.0% (base 0.0%), p95=49.0ms (base 50.0ms)\nimage-provider: rps=0.442 (base 0.692), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nproduct-catalog: rps=1.867 (base 0.767), err=0.0% (base 0.0%), p95=13892.9ms (base 15000.0ms)\nrecommendation: rps=0.133 (base 0.158), err=0.0% (base 0.0%), p95=13000.0ms (base 15000.0ms)\nshipping: rps=0.017 (base 0.05), err=0.0% (base 0.0%), p95=9.8ms (base 38.0ms)\nad: rps=0.125 (base 0.117), err=0.0% (base 0.0%), p95=8.5ms (base 165.0ms)\ncheckout: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=n/a (base n/a)\nemail: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=n/a (base n/a)\npayment: rps=0.0 (base 0.033), err=0.0% (base 0.0%), p95=n/a (base 195.0ms)",
+      "ts": 1792833038.6643906
+    },
+    {
+      "id": "ev-004",
+      "tool": "service_graph",
+      "args": {
+        "lookback": "15m"
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend-proxy&query.start_time_min=2026-10-24T08%3A55%3A38Z&query.start_time_max=2026-10-24T09%3A10%3A43Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-24T08%3A55%3A38Z&query.start_time_max=2026-10-24T09%3A10%3A43Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-24T08%3A55%3A38Z&query.start_time_max=2026-10-24T09%3A10%3A43Z&query.search_depth=20",
+      "summary": "Learned 20 call edges from 55 traces:\ncart -> valkey-cart (207 calls)\nfrontend-proxy -> frontend (131 calls)\nload-generator -> frontend-proxy (102 calls)\nfrontend -> cart (86 calls)\nproduct-catalog -> astronomy-db (66 calls)\ncheckout -> currency (50 calls)\ncheckout -> cart (28 calls)\ncheckout -> shipping (28 calls)\nfrontend -> product-catalog (28 calls)\ncheckout -> product-catalog (21 calls)\nshipping -> quote (15 calls)\ncheckout -> email (13 calls)\nfrontend -> checkout (13 calls)\ncheckout -> payment (13 calls)\nfrontend-web -> frontend-proxy (7 calls)\nfrontend -> ad (2 calls)\nfrontend -> currency (2 calls)",
+      "ts": 1792833039.7156754
+    },
+    {
+      "id": "ev-005",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "frontend-proxy",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend-proxy&query.start_time_min=2026-10-24T09%3A00%3A54Z&query.start_time_max=2026-10-24T09%3A10%3A59Z&query.search_depth=100",
+      "summary": "7 error traces for 'frontend-proxy' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 7 traces\n  example trace ids: 94e5a150c333dbff6d63b60d853359b5, 703ed3195de00898c2207141a10ae5f2, 0cf062d210d379800cffb3242109ebb4, 403481025903643b2353d629380d0a95, 1716e2690cf712a0b34436214cfd9525",
+      "ts": 1792833054.5002227
+    },
+    {
+      "id": "ev-006",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "checkout",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-24T09%3A00%3A54Z&query.start_time_max=2026-10-24T09%3A10%3A59Z&query.search_depth=100",
+      "summary": "10 error traces for 'checkout' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 39 traces\n  example trace ids: 82e2910fb34a01a0547b7b065d064258, 26918634dee6c3ee9d8f6b8fa7f55437, b8d53978be4a6c7913e9e73e2b30833f, a84856fd576c16e1bc8d4ec8fe2f69dc, cf3cd8267922d7a4912ef91a968010d8",
+      "ts": 1792833055.007699
+    },
+    {
+      "id": "ev-007",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "frontend",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-24T09%3A00%3A55Z&query.start_time_max=2026-10-24T09%3A11%3A00Z&query.search_depth=100",
+      "summary": "10 error traces for 'frontend' in last 10m.\n  error ORIGINATES in frontend-proxy / router frontend egress: 10 traces\n  example trace ids: 94e5a150c333dbff6d63b60d853359b5, 703ed3195de00898c2207141a10ae5f2, 0cf062d210d379800cffb3242109ebb4, 403481025903643b2353d629380d0a95, 1716e2690cf712a0b34436214cfd9525",
+      "ts": 1792833055.3927782
+    },
+    {
+      "id": "ev-008",
+      "tool": "service_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))",
+      "summary": "14 services, 10 min history at 30s steps",
+      "ts": 1792833055.4364705
+    },
+    {
+      "id": "ev-009",
+      "tool": "container_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
+      "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
+      "ts": 1792833055.5205462
+    },
+    {
+      "id": "ev-010",
+      "tool": "graph_rca",
+      "args": {
+        "graph_edges": 28
+      },
+      "source": "rca.analyze over ev-008 + ev-009 on the merged call graph",
+      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: payment 100%\n  root: payment [service_down] - graph RCA: payment ranks #1 (share 100%); evidence: Docker reports it service down",
+      "ts": 1792833055.5378926
+    }
+  ],
+  "redactions": 6,
+  "schema_errors": []
+}

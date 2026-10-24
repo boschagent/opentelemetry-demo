@@ -1,0 +1,294 @@
+{
+  "incident_id": "INC-20261024-112657-payment",
+  "status": "escalated",
+  "detected_at": "2026-10-24T11:26:57",
+  "alert": "control room: incident 'payment'",
+  "root_cause": {
+    "component": "product-catalog",
+    "fault_class": "latency_degradation",
+    "summary": "product-catalog: latency degradation. product-catalog p95 916.9ms vs baseline 330.5ms (x2.77)",
+    "alternatives": [
+      "recommendation [latency_degradation] score=0.5",
+      "checkout [app_errors] score=0.25"
+    ],
+    "secondary": [],
+    "mode": "triage-only",
+    "notes": [
+      "runner-up suspect nearly as strong"
+    ]
+  },
+  "confidence": 0.36,
+  "evidence": [
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "observation": "product-catalog p95 916.9ms vs baseline 330.5ms (x2.77)"
+    }
+  ],
+  "proposed_action": {
+    "action": "restart_service",
+    "params": {
+      "service": "product-catalog"
+    },
+    "reason": "product-catalog diagnosed as latency_degradation; restart is the allowlisted remedy (clears leaked memory/caches, crashed processes, wedged connections; restarts stopped containers)."
+  },
+  "approval": null,
+  "actions_taken": [],
+  "verification": null,
+  "timeline": [
+    {
+      "time": "2026-10-24T11:26:57",
+      "event": "alert received: control room: incident 'payment'"
+    },
+    {
+      "time": "2026-10-24T11:27:34",
+      "event": "triage: 3 suspects, top=product-catalog/latency_degradation"
+    },
+    {
+      "time": "2026-10-24T11:27:34",
+      "event": "LLM investigation finished (1 steps)"
+    },
+    {
+      "time": "2026-10-24T11:27:34",
+      "event": "diagnosis: product-catalog [latency_degradation] conf=0.36"
+    },
+    {
+      "time": "2026-10-24T11:27:34",
+      "event": "escalated to human: confidence 0.36 below threshold 0.55"
+    }
+  ],
+  "prevention": [
+    "Add a p95 latency SLO alert per service and investigate the slow dependency."
+  ],
+  "reviewer": null,
+  "escalation_reason": "confidence 0.36 below threshold 0.55",
+  "rejected_evidence": [],
+  "memory_hits": [
+    {
+      "incident_id": "EVAL-catalog_down",
+      "component": "product-catalog",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "product-catalog: service down. container product-catalog status=exited exit_code=137"
+    },
+    {
+      "incident_id": "INC-20261024-004255-catalog_down",
+      "component": "product-catalog",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "product-catalog: service down. container product-catalog status=exited exit_code=137 (also dependency_unreachable) 33 failed calls from frontend to product-catalog never reached a product-catalog serv"
+    }
+  ],
+  "fewshot": [
+    {
+      "similarity": 0.623,
+      "fault_class": "cpu_starved",
+      "action": null,
+      "outcome": "labelled practice incident",
+      "source": "ad_starved",
+      "shape": "cls:cpu_starved, cls:latency_degradation, rca:p95, instrumented, rca_agrees"
+    },
+    {
+      "similarity": 0.435,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "catalog_down",
+      "shape": "cls:service_down, instrumented, others_disturbed, rca_agrees"
+    },
+    {
+      "similarity": 0.435,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "quote_down",
+      "shape": "cls:service_down, instrumented, others_disturbed, rca_agrees"
+    }
+  ],
+  "llm": {
+    "model": null,
+    "calls": 0,
+    "tokens": 0
+  },
+  "investigation_transcript": [
+    {
+      "step": 0,
+      "error": "LLM call failed: HTTP 400: {\"error\":{\"message\":\"Organization has been restricted. Please reach out to support if you believe this was in error.\",\"type\":\"invalid_request_error\",\"code\":\"organization_restricted\"}}\n"
+    }
+  ],
+  "triage": [
+    {
+      "component": "product-catalog",
+      "fault_class": "latency_degradation",
+      "score": 0.5,
+      "rationale": [
+        "product-catalog p95 916.9ms vs baseline 330.5ms (x2.77)"
+      ],
+      "evidence": [
+        "ev-003"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "recommendation",
+      "fault_class": "latency_degradation",
+      "score": 0.5,
+      "rationale": [
+        "graph RCA: recommendation ranks #1 (share 100%); own anomaly p95 342.0->840.0 (z=9.7)"
+      ],
+      "evidence": [
+        "ev-010"
+      ],
+      "suggested_action": "restart_service"
+    },
+    {
+      "component": "checkout",
+      "fault_class": "app_errors",
+      "score": 0.25,
+      "rationale": [
+        "1 error traces originate in checkout / POST, but its error rate 0.0% is not above its baseline 0.0% (background noise)"
+      ],
+      "evidence": [
+        "ev-005"
+      ],
+      "suggested_action": "restart_service"
+    }
+  ],
+  "rca": {
+    "roots": [
+      {
+        "node": "recommendation",
+        "service": "recommendation",
+        "fault_class": "latency_degradation",
+        "share": 1.0,
+        "a": 1.0,
+        "why": "graph RCA: recommendation ranks #1 (share 100%); own anomaly p95 342.0->840.0 (z=9.7)",
+        "latency_only": true,
+        "onset_rel_s": -120
+      }
+    ],
+    "anomalous": {
+      "recommendation": {
+        "a": 1.0,
+        "kinds": [
+          "p95"
+        ]
+      }
+    },
+    "ranking": [
+      [
+        "recommendation",
+        1.0
+      ]
+    ],
+    "combined": false
+  },
+  "combination": false,
+  "ledger": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "args": {},
+      "source": "docker ps -a; docker inspect <all>",
+      "summary": "23 demo containers (compose project 'opentelemetry-demo'); 22 running normally. Ignored 3 unrelated containers.\n  !! product-catalog: status=running health=healthy restarts=1 oom=False exit=0 finished_at=2026-10-24T05:18:26.466331758Z",
+      "ts": 1792821421.9859712
+    },
+    {
+      "id": "ev-002",
+      "tool": "container_stats",
+      "args": {},
+      "source": "docker stats --no-stream",
+      "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nload-generator: cpu=375.67% mem=43.53% (653MiB / 1.465GiB)\ncheckout: cpu=243.78% mem=63.93% (12.79MiB / 20MiB)\nopensearch: cpu=4.1% mem=98.68% (1010MiB / 1GiB)\nad: cpu=15.12% mem=90.52% (271.6MiB / 300MiB)\nquote: cpu=0.02% mem=78.92% (31.57MiB / 40MiB)\nemail: cpu=0.41% mem=76.79% (76.79MiB / 100MiB)\nproduct-catalog: cpu=51.72% mem=76.33% (15.27MiB / 20MiB)\nastronomy-db: cpu=43.0% mem=75.73% (60.59MiB / 80MiB)\ngrafana: cpu=5.29% mem=75.36% (376.8MiB / 500MiB)\npayment: cpu=1.66% mem=73.38% (102.7MiB / 140MiB)\nfrontend-proxy: cpu=33.3% mem=72.52% (65.27MiB / 90MiB)\nshipping: cpu=0.87% mem=71.31% (14.26MiB / 20MiB)\nfrontend: cpu=19.37% mem=67.15% (167.9MiB / 250MiB)\nvalkey-cart: cpu=1.76% mem=54.26% (10.85MiB / 20MiB)\nrecommendation: cpu=1.36% mem=49.03% (245.2MiB / 500MiB)",
+      "ts": 1792821429.4815903
+    },
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "args": {},
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "summary": "Service RED, worst first:\nproduct-catalog: rps=3.901 (base 3.643), err=0.0% (base 0.0%), p95=916.9ms (base 330.5ms)\nfrontend: rps=9.685 (base 9.06), err=0.0% (base 0.0%), p95=758.0ms (base 298.5ms)\nrecommendation: rps=0.6 (base 0.575), err=0.0% (base 0.0%), p95=840.0ms (base 351.7ms)\nquote: rps=0.125 (base 0.117), err=0.0% (base 0.0%), p95=6.5ms (base 3.3ms)\nad: rps=0.283 (base 0.317), err=0.0% (base 0.0%), p95=46.0ms (base 24.7ms)\nshipping: rps=0.142 (base 0.15), err=0.0% (base 0.0%), p95=45.1ms (base 42.8ms)\nemail: rps=0.033 (base 0.033), err=0.0% (base 0.0%), p95=48.0ms (base 47.3ms)\npayment: rps=0.042 (base 0.033), err=0.0% (base 0.0%), p95=3.8ms (base 3.8ms)\ncurrency: rps=0.733 (base 0.717), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nimage-provider: rps=2.467 (base 2.517), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.192 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ncheckout: rps=0.042 (base 0.033), err=0.0% (base 0.0%), p95=8750.0ms (base 9000.0ms)\ncart: rps=1.067 (base 0.959), err=0.0% (base 0.0%), p95=38.0ms (base 41.7ms)\nfrontend-proxy: rps=9.551 (base 9.235), err=0.0% (base 0.1%), p95=548.0ms (base 251.4ms)",
+      "ts": 1792821429.758525
+    },
+    {
+      "id": "ev-004",
+      "tool": "service_graph",
+      "args": {
+        "lookback": "15m"
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend-proxy&query.start_time_min=2026-10-24T05%3A42%3A09Z&query.start_time_max=2026-10-24T05%3A57%3A14Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-24T05%3A42%3A09Z&query.start_time_max=2026-10-24T05%3A57%3A14Z&query.search_depth=20\nGET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-24T05%3A42%3A09Z&query.start_time_max=2026-10-24T05%3A57%3A14Z&query.search_depth=20",
+      "summary": "Learned 23 call edges from 60 traces:\ncart -> valkey-cart (215 calls)\nproduct-catalog -> astronomy-db (137 calls)\nfrontend-proxy -> frontend (112 calls)\nload-generator -> frontend-proxy (95 calls)\nfrontend -> product-catalog (86 calls)\nfrontend -> cart (78 calls)\ncheckout -> currency (53 calls)\ncheckout -> cart (40 calls)\ncheckout -> shipping (40 calls)\ncheckout -> product-catalog (33 calls)\nshipping -> quote (21 calls)\nfrontend-web -> frontend-proxy (20 calls)\nfrontend -> checkout (20 calls)\ncheckout -> email (20 calls)\ncheckout -> payment (20 calls)\nrecommendation -> product-catalog (3 calls)\nfrontend -> recommendation (3 calls)\nfrontend -> ad (2 calls)\nfrontend -> currency (1 calls)\nfrontend -> shipping (1 calls)",
+      "ts": 1792821432.7439458
+    },
+    {
+      "id": "ev-005",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "checkout",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-10-24T05%3A47%3A32Z&query.start_time_max=2026-10-24T05%3A57%3A37Z&query.search_depth=100",
+      "summary": "1 error traces for 'checkout' in last 10m.\n  error ORIGINATES in checkout / POST: 1 traces  msg=\"context deadline exceeded\"\n  example trace ids: bb3ec32125863aed6f637c9a01cc245d",
+      "ts": 1792821453.7469223
+    },
+    {
+      "id": "ev-006",
+      "tool": "find_error_traces",
+      "args": {
+        "service": "frontend",
+        "lookback": "10m",
+        "limit": 20
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-24T05%3A47%3A33Z&query.start_time_max=2026-10-24T05%3A57%3A38Z&query.search_depth=100",
+      "summary": "0 error traces for 'frontend' in last 10m.\n  example trace ids: ",
+      "ts": 1792821453.9130504
+    },
+    {
+      "id": "ev-007",
+      "tool": "latency_edges",
+      "args": {
+        "service": "frontend",
+        "lookback": "5m",
+        "limit": 30
+      },
+      "source": "GET http://localhost:8080/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-10-24T05%3A52%3A33Z&query.start_time_max=2026-10-24T05%3A57%3A38Z&query.search_depth=30",
+      "summary": "Caller->callee gaps (client minus server time):\nfrontend-web -> frontend-proxy: median network gap 55.7ms (server itself 40.3ms, n=9)\nfrontend -> product-catalog: median network gap 8.29ms (server itself 26.02ms, n=18)\nfrontend-proxy -> frontend: median network gap 1.7ms (server itself 30.53ms, n=29)",
+      "ts": 1792821454.0435078
+    },
+    {
+      "id": "ev-008",
+      "tool": "service_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))",
+      "summary": "14 services, 10 min history at 30s steps",
+      "ts": 1792821454.176606
+    },
+    {
+      "id": "ev-009",
+      "tool": "container_history",
+      "args": {
+        "minutes": 10
+      },
+      "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
+      "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
+      "ts": 1792821454.2330196
+    },
+    {
+      "id": "ev-010",
+      "tool": "graph_rca",
+      "args": {
+        "graph_edges": 28
+      },
+      "source": "rca.analyze over ev-008 + ev-009 on the merged call graph",
+      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: recommendation 100%\n  root: recommendation [latency_degradation] - graph RCA: recommendation ranks #1 (share 100%); own anomaly p95 342.0->840.0 (z=9.7)",
+      "ts": 1792821454.2523932
+    }
+  ],
+  "redactions": 6,
+  "schema_errors": []
+}

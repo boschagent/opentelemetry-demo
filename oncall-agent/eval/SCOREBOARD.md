@@ -1,11 +1,11 @@
-# Scoreboard (20261023-210340, git nogit, llm=False, ablate=none, degrade=none, threshold=0.55)
+# Scoreboard (20261024-144421, git 66a5bf3d, llm=False, ablate=none, degrade=none, threshold=0.55)
 
 **10/10 correct, 0 escalated, 0 wrong**
 
 | bundle | truth | predicted | conf | status | outcome |
 |---|---|---|---|---|---|
 | ad_starved | ad/cpu_starved | ad/cpu_starved | 0.873 | escalated | correct |
-| cart_down | cart/service_down | cart/service_down | 0.878 | diagnosed | correct |
+| cart_down | cart/service_down | cart/service_down | 0.829 | diagnosed | correct |
 | catalog_down | product-catalog/service_down | product-catalog/service_down | 0.878 | diagnosed | correct |
 | combo_cart_ad | cart/service_down | cart/service_down | 0.864 | diagnosed | correct |
 | db_down | astronomy-db/service_down | astronomy-db/service_down | 0.683 | diagnosed | correct |

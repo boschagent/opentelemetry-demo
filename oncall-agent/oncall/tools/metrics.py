@@ -43,6 +43,9 @@ def prom_query(be: Backend, cfg: Config, query: str) -> dict:
     res = [(m, v) for m, v in res if m.get("service_name") not in DENY_SERVICES
            and not any(_FLAG_KEY.search(f"{k}={x}") for k, x in m.items())]
     lines = [f"{ {k: v for k, v in m.items() if k != '__name__'} } = {v:.4g}" for m, v in res[:40]]
+    if not res:
+        return {"ok": True, "summary": "0 series: NO DATA. This metric or label does not exist here; an empty result says "
+                "nothing about whether a service is up or down.", "data": [], "source": f"PromQL: {query}"}
     return {"ok": True, "summary": f"{len(res)} series\n" + "\n".join(lines), "data": [[m, v] for m, v in res[:200]],
             "source": f"PromQL: {query}"}
 
@@ -199,8 +202,9 @@ def service_red(be: Backend, cfg: Config) -> dict:
             "p95_ratio": round(p95 / pb, 2) if (p95 and pb) else None,
         })
     rows.sort(key=lambda r: (-(r["error_rate"] - r["error_rate_base"]), -(r["p95_ratio"] or 0)))
+    ms = lambda v: "n/a" if v is None else f"{v}ms"     # a service with no traffic in the baseline has no p95
     lines = [f"{r['service']}: rps={r['rps']} (base {r['rps_base']}), err={r['error_rate']:.1%} "
-             f"(base {r['error_rate_base']:.1%}), p95={r['p95_ms']}ms (base {r['p95_base_ms']}ms)" for r in rows]
+             f"(base {r['error_rate_base']:.1%}), p95={ms(r['p95_ms'])} (base {ms(r['p95_base_ms'])})" for r in rows]
     return {"ok": True, "summary": "Service RED, worst first:\n" + "\n".join(lines[:25]), "data": rows,
             "source": "PromQL:\n" + "\n".join(queries.values())}
 

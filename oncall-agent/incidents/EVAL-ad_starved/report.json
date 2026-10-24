@@ -1,12 +1,12 @@
 {
   "incident_id": "EVAL-ad_starved",
   "status": "escalated",
-  "detected_at": "2026-10-24T01:47:20",
+  "detected_at": "2026-10-24T14:44:02",
   "alert": "eval ad_starved",
   "root_cause": {
     "component": "ad",
     "fault_class": "cpu_starved",
-    "summary": "ad: cpu starved. ad pinned at 5.65% CPU against a 0.05-core limit (also latency_degradation) ad p95 2150.0ms vs baseline 57.5ms (x37.39) (also latency_degradation) graph RCA: ad ranks #1 (share 100%); own anomaly p95 20.0->2675.0 (z=335.8)",
+    "summary": "ad: cpu starved. ad CPU limit is 0.05 cores (healthy baseline: no limit) - lowered; ad pinned at 5.65% CPU against a 0.05-core limit; also (latency_degradation) ad p95 2150.0ms vs baseline 57.5ms (x37.39).",
     "alternatives": [
       "frontend [app_errors] score=0.35"
     ],
@@ -14,25 +14,31 @@
     "mode": "triage-only",
     "notes": []
   },
-  "confidence": 0.833,
+  "confidence": 0.873,
   "evidence": [
+    {
+      "id": "ev-001",
+      "tool": "container_health",
+      "source": "docker ps -a; docker inspect <all>",
+      "observation": "ad: status=running health=healthy cpu_limit_cores=0.05 mem_limit_mb=314.6"
+    },
     {
       "id": "ev-002",
       "tool": "container_stats",
       "source": "docker stats --no-stream",
-      "observation": "ad pinned at 5.65% CPU against a 0.05-core limit; (also latency_degradation) ad p95 2150.0ms vs baseline 57.5ms (x37.39); (also latency_degradation) graph RCA: ad ranks #1 (share 100%); own anomaly p95 20.0->2675.0 (z=335.8)"
+      "observation": "load-generator: cpu=207.97% mem=49.62% (744.3MiB / 1.465GiB); ad: cpu=5.65% mem=93.42% (280.3MiB / 300MiB)"
     },
     {
       "id": "ev-003",
       "tool": "service_red",
       "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
-      "observation": "ad pinned at 5.65% CPU against a 0.05-core limit; (also latency_degradation) ad p95 2150.0ms vs baseline 57.5ms (x37.39); (also latency_degradation) graph RCA: ad ranks #1 (share 100%); own anomaly p95 20.0->2675.0 (z=335.8)"
+      "observation": "ad: rps=0.317 (base 0.283), err=0.0% (base 0.0%), p95=2150.0ms (base 57.5ms)"
     },
     {
       "id": "ev-010",
       "tool": "graph_rca",
       "source": "rca.analyze over ev-008 + ev-009 on the merged call graph",
-      "observation": "ad pinned at 5.65% CPU against a 0.05-core limit; (also latency_degradation) ad p95 2150.0ms vs baseline 57.5ms (x37.39); (also latency_degradation) graph RCA: ad ranks #1 (share 100%); own anomaly p95 20.0->2675.0 (z=335.8)"
+      "observation": "ranking: ad 100%; root: ad [latency_degradation] - graph RCA: ad ranks #1 (share 100%); evidence: p95 latency 20.0 -> 2675.0 (robust z=335.8)"
     }
   ],
   "proposed_action": null,
@@ -41,19 +47,19 @@
   "verification": null,
   "timeline": [
     {
-      "time": "2026-10-24T01:47:20",
+      "time": "2026-10-24T14:44:02",
       "event": "alert received: eval ad_starved"
     },
     {
-      "time": "2026-10-24T01:47:20",
+      "time": "2026-10-24T14:44:03",
       "event": "triage: 2 suspects, top=ad/cpu_starved"
     },
     {
-      "time": "2026-10-24T01:47:21",
-      "event": "diagnosis: ad [cpu_starved] conf=0.833"
+      "time": "2026-10-24T14:44:03",
+      "event": "diagnosis: ad [cpu_starved] conf=0.873"
     },
     {
-      "time": "2026-10-24T01:47:21",
+      "time": "2026-10-24T14:44:03",
       "event": "escalated to human: no allowlisted remedy for fault class 'cpu_starved'"
     }
   ],
@@ -66,12 +72,28 @@
   "memory_hits": [],
   "fewshot": [
     {
-      "similarity": 0.224,
+      "similarity": 0.496,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "quote_down",
+      "shape": "cls:service_down, instrumented, others_disturbed, rca_agrees"
+    },
+    {
+      "similarity": 0.447,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "catalog_down",
+      "shape": "cls:service_down, instrumented, others_disturbed, rca_agrees"
+    },
+    {
+      "similarity": 0.447,
       "fault_class": "service_down",
       "action": "restart_service",
       "outcome": "resolved (verified)",
-      "source": "INC-20261023-224228-cart_down",
-      "shape": "cls:service_down, cls:dependency_unreachable, instrumented, combined"
+      "source": "INC-20261024-120054-cart_down",
+      "shape": "cls:service_down, cls:dependency_unreachable, instrumented, rca_agrees"
     }
   ],
   "llm": {
@@ -84,13 +106,15 @@
     {
       "component": "ad",
       "fault_class": "cpu_starved",
-      "score": 0.925,
+      "score": 0.97,
       "rationale": [
+        "ad CPU limit is 0.05 cores (healthy baseline: no limit) - lowered",
         "ad pinned at 5.65% CPU against a 0.05-core limit",
         "(also latency_degradation) ad p95 2150.0ms vs baseline 57.5ms (x37.39)",
-        "(also latency_degradation) graph RCA: ad ranks #1 (share 100%); own anomaly p95 20.0->2675.0 (z=335.8)"
+        "(also latency_degradation) graph RCA: ad ranks #1 (share 100%); evidence: p95 latency 20.0 -> 2675.0 (robust z=335.8)"
       ],
       "evidence": [
+        "ev-001",
         "ev-002",
         "ev-003",
         "ev-010"
@@ -110,6 +134,36 @@
       "suggested_action": "restart_service"
     }
   ],
+  "rca": {
+    "roots": [
+      {
+        "node": "ad",
+        "service": "ad",
+        "fault_class": "latency_degradation",
+        "share": 1.0,
+        "a": 1.0,
+        "why": "graph RCA: ad ranks #1 (share 100%); evidence: p95 latency 20.0 -> 2675.0 (robust z=335.8)",
+        "latency_only": true,
+        "onset_rel_s": -211
+      }
+    ],
+    "anomalous": {
+      "ad": {
+        "a": 1.0,
+        "kinds": [
+          "p95"
+        ]
+      }
+    },
+    "ranking": [
+      [
+        "ad",
+        1.0
+      ]
+    ],
+    "combined": false
+  },
+  "combination": false,
   "ledger": [
     {
       "id": "ev-001",
@@ -117,7 +171,7 @@
       "args": {},
       "source": "docker ps -a; docker inspect <all>",
       "summary": "23 demo containers (compose project 'opentelemetry-demo'); 22 running normally. Ignored 3 unrelated containers.\n  !! recommendation: status=running health=healthy restarts=12 oom=False exit=0 finished_at=2026-10-23T19:51:46.092702001Z",
-      "ts": 1792786640.556732
+      "ts": 1792833242.838132
     },
     {
       "id": "ev-002",
@@ -125,7 +179,7 @@
       "args": {},
       "source": "docker stats --no-stream",
       "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nload-generator: cpu=207.97% mem=49.62% (744.3MiB / 1.465GiB)\nproduct-catalog: cpu=124.42% mem=83.26% (16.65MiB / 20MiB)\nfrontend: cpu=15.76% mem=94.56% (236.4MiB / 250MiB)\nad: cpu=5.65% mem=93.42% (280.3MiB / 300MiB)\nopensearch: cpu=7.14% mem=91.46% (936.5MiB / 1GiB)\nfrontend-proxy: cpu=9.09% mem=72.16% (64.95MiB / 90MiB)\npayment: cpu=1.98% mem=72.06% (100.9MiB / 140MiB)\ncheckout: cpu=0.21% mem=69.45% (13.89MiB / 20MiB)\nshipping: cpu=0.91% mem=68.87% (13.77MiB / 20MiB)\nemail: cpu=0.06% mem=68.0% (68MiB / 100MiB)\ngrafana: cpu=5.16% mem=64.67% (323.4MiB / 500MiB)\nastronomy-db: cpu=12.76% mem=63.47% (50.78MiB / 80MiB)\nvalkey-cart: cpu=0.9% mem=57.79% (11.56MiB / 20MiB)\nprometheus: cpu=3.81% mem=53.4% (106.8MiB / 200MiB)\nquote: cpu=0.02% mem=46.83% (18.73MiB / 40MiB)",
-      "ts": 1792786640.565738
+      "ts": 1792833242.8437526
     },
     {
       "id": "ev-003",
@@ -133,7 +187,7 @@
       "args": {},
       "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
       "summary": "Service RED, worst first:\nad: rps=0.317 (base 0.283), err=0.0% (base 0.0%), p95=2150.0ms (base 57.5ms)\npayment: rps=0.075 (base 0.05), err=0.0% (base 0.0%), p95=32.0ms (base 3.9ms)\nfrontend: rps=10.802 (base 9.985), err=0.0% (base 0.0%), p95=1386.7ms (base 960.8ms)\nshipping: rps=0.267 (base 0.192), err=0.0% (base 0.0%), p95=70.0ms (base 49.6ms)\ncart: rps=1.35 (base 1.242), err=0.0% (base 0.0%), p95=47.2ms (base 40.1ms)\nemail: rps=0.075 (base 0.05), err=0.0% (base 0.0%), p95=47.4ms (base 47.0ms)\nimage-provider: rps=2.859 (base 2.551), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.192 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ncurrency: rps=0.8 (base 0.8), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nproduct-catalog: rps=3.951 (base 3.901), err=0.0% (base 0.0%), p95=1294.3ms (base 1730.0ms)\ncheckout: rps=0.075 (base 0.05), err=0.0% (base 0.0%), p95=8875.0ms (base 15000.0ms)\nrecommendation: rps=0.583 (base 0.469), err=0.0% (base 0.0%), p95=900.0ms (base 1513.2ms)\nquote: rps=0.192 (base 0.142), err=0.0% (base 0.0%), p95=2.0ms (base 16.0ms)\nfrontend-proxy: rps=10.794 (base 10.119), err=0.0% (base 0.1%), p95=1075.0ms (base 838.3ms)",
-      "ts": 1792786640.5702155
+      "ts": 1792833242.8464603
     },
     {
       "id": "ev-004",
@@ -144,7 +198,7 @@
       },
       "source": "docker logs --since 3m --timestamps frontend",
       "summary": "frontend: 503 log lines in last 3m, 21 matched error/warn patterns.\n  x6: 2026-10-23T20:04:09.463862060Z {\"level\":30,\"time\":1792785849461,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"3ea5650331d0a9ca24c624fa3a8bcf02\",\"span_id\":\"1e63a817cbc4dd05\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/recommendations\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x3: 2026-10-23T20:03:43.455831596Z {\"level\":30,\"time\":1792785823455,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"f80791d2afe1d8bed7e5003d227e92e0\",\"span_id\":\"e66b836bb1b494ec\",\"trace_flags\":\"01\",\"http.request.method\":\"POST\",\"url.path\":\"/api/cart\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x3: 2026-10-23T20:04:53.350376716Z {\"level\":30,\"time\":1792785893348,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"f04bd914c3b2e71272d5ca3cd782083b\",\"span_id\":\"4f56280b20d30c85\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/cart\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x2: 2026-10-23T20:03:29.242522107Z {\"level\":30,\"time\":1792785809241,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"5815000ff682a732a4ce4efd1c22d678\",\"span_id\":\"995decbe9b8b7020\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/currency\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x2: 2026-10-23T20:04:34.505646402Z {\"level\":30,\"time\":1792785874503,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"4152ebe6a3ea558673720dca7e022791\",\"span_id\":\"a2cff83ad2b06671\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/data\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x1: 2026-10-23T20:03:37.350003766Z {\"level\":30,\"time\":1792785817349,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"9323bd6e11294f8fdce3557f9b32d52d\",\"span_id\":\"dbd096b61d058413\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/products/OLJCESPC7Z\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x1: 2026-10-23T20:03:42.804616364Z {\"level\":30,\"time\":1792785822804,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"8184872f2c21493036c67bbef74bef54\",\"span_id\":\"500a074a4bf1ab26\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/products\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x1: 2026-10-23T20:03:49.441102278Z {\"level\":30,\"time\":1792785829439,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"a2875e44e238b336b2a7de9d7954ef2c\",\"span_id\":\"e05a9503cf673c10\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/products/0PUK6V6EV0\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}",
-      "ts": 1792786640.8531823
+      "ts": 1792833242.9251466
     },
     {
       "id": "ev-005",
@@ -156,7 +210,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
-      "ts": 1792786640.9627333
+      "ts": 1792833242.9823165
     },
     {
       "id": "ev-006",
@@ -168,7 +222,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
-      "ts": 1792786640.9636054
+      "ts": 1792833242.9826915
     },
     {
       "id": "ev-007",
@@ -180,7 +234,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=5m&limit=30",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=5m&limit=30",
-      "ts": 1792786640.9638562
+      "ts": 1792833242.9829369
     },
     {
       "id": "ev-008",
@@ -190,7 +244,7 @@
       },
       "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))",
       "summary": "14 services, 10 min history at 30s steps",
-      "ts": 1792786640.969897
+      "ts": 1792833243.0100436
     },
     {
       "id": "ev-009",
@@ -200,7 +254,7 @@
       },
       "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
       "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
-      "ts": 1792786640.9762406
+      "ts": 1792833243.0272331
     },
     {
       "id": "ev-010",
@@ -209,8 +263,8 @@
         "graph_edges": 28
       },
       "source": "rca.analyze over ev-008 + ev-009 on the merged call graph",
-      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: ad 100%\n  root: ad [latency_degradation] - graph RCA: ad ranks #1 (share 100%); own anomaly p95 20.0->2675.0 (z=335.8)",
-      "ts": 1792786640.9931042
+      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: ad 100%\n  root: ad [latency_degradation] - graph RCA: ad ranks #1 (share 100%); evidence: p95 latency 20.0 -> 2675.0 (robust z=335.8)",
+      "ts": 1792833243.0559192
     }
   ],
   "redactions": 0,

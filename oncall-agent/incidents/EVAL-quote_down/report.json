@@ -1,12 +1,12 @@
 {
   "incident_id": "EVAL-quote_down",
   "status": "diagnosed",
-  "detected_at": "2026-10-24T01:47:27",
+  "detected_at": "2026-10-24T14:44:15",
   "alert": "eval quote_down",
   "root_cause": {
     "component": "quote",
     "fault_class": "service_down",
-    "summary": "quote: service down. container quote status=exited exit_code=0",
+    "summary": "quote: service down. container quote status=exited exit_code=0; quote stopped serving: 0.0/s now vs 0.125/s at baseline, and none of its callers went quiet.",
     "alternatives": [
       "image-provider [app_errors] score=0.5",
       "frontend [app_errors] score=0.35",
@@ -14,15 +14,23 @@
     ],
     "secondary": [],
     "mode": "triage-only",
-    "notes": []
+    "notes": [
+      "few-shot memory agrees (0.97 similar past incident was service_down)"
+    ]
   },
-  "confidence": 0.81,
+  "confidence": 0.878,
   "evidence": [
     {
       "id": "ev-001",
       "tool": "container_health",
       "source": "docker ps -a; docker inspect <all>",
-      "observation": "container quote status=exited exit_code=0"
+      "observation": "!! quote: status=exited health=unhealthy restarts=0 oom=False exit=0 finished_at=2026-10-23T19:35:14.265840354Z"
+    },
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "observation": "quote: rps=0.0 (base 0.125), err=0.0% (base 0.0%), p95=n/a (base 20.0ms)"
     }
   ],
   "proposed_action": {
@@ -37,16 +45,16 @@
   "verification": null,
   "timeline": [
     {
-      "time": "2026-10-24T01:47:27",
+      "time": "2026-10-24T14:44:15",
       "event": "alert received: eval quote_down"
     },
     {
-      "time": "2026-10-24T01:47:28",
+      "time": "2026-10-24T14:44:16",
       "event": "triage: 4 suspects, top=quote/service_down"
     },
     {
-      "time": "2026-10-24T01:47:28",
-      "event": "diagnosis: quote [service_down] conf=0.81"
+      "time": "2026-10-24T14:44:16",
+      "event": "diagnosis: quote [service_down] conf=0.878"
     }
   ],
   "prevention": [
@@ -56,6 +64,14 @@
   "escalation_reason": null,
   "rejected_evidence": [],
   "memory_hits": [
+    {
+      "incident_id": "EVAL-quote_down",
+      "component": "quote",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "quote: service down. container quote status=exited exit_code=0; quote stopped serving: 0.0/s now vs 0.125/s at baseline, and none of its callers went quiet."
+    },
     {
       "incident_id": "INC-20261024-010916-quote_down",
       "component": "quote",
@@ -70,25 +86,33 @@
       "fault_class": "service_down",
       "action": "restart_service",
       "status": "diagnosed",
-      "summary": "payment: service down. container payment status=paused exit_code=0"
-    },
-    {
-      "incident_id": "EVAL-db_down",
-      "component": "astronomy-db",
-      "fault_class": "service_down",
-      "action": "restart_service",
-      "status": "diagnosed",
-      "summary": "astronomy-db: service down. container astronomy-db status=exited exit_code=0"
+      "summary": "payment: service down. container payment status=paused exit_code=0."
     }
   ],
   "fewshot": [
     {
-      "similarity": 0.555,
+      "similarity": 0.971,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "catalog_down",
+      "shape": "cls:service_down, instrumented, others_disturbed, rca_agrees"
+    },
+    {
+      "similarity": 0.876,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "cart_down",
+      "shape": "cls:service_down, rca:rps_down, instrumented, others_disturbed, rca_agrees"
+    },
+    {
+      "similarity": 0.874,
       "fault_class": "service_down",
       "action": "restart_service",
       "outcome": "resolved (verified)",
-      "source": "INC-20261023-224228-cart_down",
-      "shape": "cls:service_down, cls:dependency_unreachable, instrumented, combined"
+      "source": "INC-20261024-121442-payment_paused",
+      "shape": "cls:service_down, instrumented, others_disturbed, combined, rca_agrees"
     }
   ],
   "llm": {
@@ -101,12 +125,14 @@
     {
       "component": "quote",
       "fault_class": "service_down",
-      "score": 0.9,
+      "score": 0.96,
       "rationale": [
-        "container quote status=exited exit_code=0"
+        "container quote status=exited exit_code=0",
+        "quote stopped serving: 0.0/s now vs 0.125/s at baseline, and none of its callers went quiet"
       ],
       "evidence": [
-        "ev-001"
+        "ev-001",
+        "ev-003"
       ],
       "suggested_action": "restart_service"
     },
@@ -148,6 +174,57 @@
       "suggested_action": "restart_service"
     }
   ],
+  "rca": {
+    "roots": [
+      {
+        "node": "quote",
+        "service": "quote",
+        "fault_class": "service_down",
+        "share": 0.679,
+        "a": 1.0,
+        "why": "graph RCA: quote ranks #1 (share 68%); evidence: Docker reports it service down; its callers broke after it: checkout +1s, shipping +61s",
+        "latency_only": false,
+        "onset_rel_s": -211
+      }
+    ],
+    "anomalous": {
+      "checkout": {
+        "a": 1.0,
+        "kinds": [
+          "err"
+        ]
+      },
+      "shipping": {
+        "a": 1.0,
+        "kinds": [
+          "err",
+          "p95"
+        ]
+      },
+      "quote": {
+        "a": 1.0,
+        "kinds": [
+          "down"
+        ]
+      }
+    },
+    "ranking": [
+      [
+        "quote",
+        0.679
+      ],
+      [
+        "shipping",
+        0.213
+      ],
+      [
+        "checkout",
+        0.108
+      ]
+    ],
+    "combined": false
+  },
+  "combination": false,
   "ledger": [
     {
       "id": "ev-001",
@@ -155,7 +232,7 @@
       "args": {},
       "source": "docker ps -a; docker inspect <all>",
       "summary": "23 demo containers (compose project 'opentelemetry-demo'); 22 running normally. Ignored 3 unrelated containers.\n  !! quote: status=exited health=unhealthy restarts=0 oom=False exit=0 finished_at=2026-10-23T19:35:14.265840354Z",
-      "ts": 1792786647.9528894
+      "ts": 1792833255.5353618
     },
     {
       "id": "ev-002",
@@ -163,15 +240,15 @@
       "args": {},
       "source": "docker stats --no-stream",
       "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\nproduct-catalog: cpu=416.1% mem=83.81% (16.76MiB / 20MiB)\nfrontend: cpu=28.38% mem=94.91% (237.3MiB / 250MiB)\nopensearch: cpu=5.71% mem=91.51% (937MiB / 1GiB)\nad: cpu=11.75% mem=89.11% (267.3MiB / 300MiB)\nshipping: cpu=26.28% mem=74.14% (14.83MiB / 20MiB)\npayment: cpu=3.01% mem=72.77% (101.9MiB / 140MiB)\ncheckout: cpu=70.79% mem=71.07% (14.21MiB / 20MiB)\nfrontend-proxy: cpu=7.21% mem=70.94% (63.84MiB / 90MiB)\nemail: cpu=0.07% mem=67.84% (67.84MiB / 100MiB)\nastronomy-db: cpu=23.3% mem=65.14% (52.11MiB / 80MiB)\ngrafana: cpu=7.74% mem=65.07% (325.4MiB / 500MiB)\nvalkey-cart: cpu=0.59% mem=57.56% (11.51MiB / 20MiB)\nrecommendation: cpu=14.83% mem=56.97% (284.8MiB / 500MiB)\nprometheus: cpu=1.27% mem=50.42% (100.8MiB / 200MiB)\nload-generator: cpu=8.51% mem=47.81% (717.2MiB / 1.465GiB)",
-      "ts": 1792786647.9580054
+      "ts": 1792833255.5399396
     },
     {
       "id": "ev-003",
       "tool": "service_red",
       "args": {},
       "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
-      "summary": "Service RED, worst first:\nshipping: rps=0.158 (base 0.175), err=100.0% (base 0.0%), p95=4850.0ms (base 49.8ms)\ncheckout: rps=0.042 (base 0.05), err=100.0% (base 0.0%), p95=9750.0ms (base 13500.0ms)\nfrontend: rps=10.444 (base 10.494), err=1.8% (base 0.0%), p95=1118.9ms (base 667.1ms)\nfrontend-proxy: rps=10.527 (base 10.028), err=0.4% (base 0.0%), p95=881.4ms (base 589.6ms)\nad: rps=0.325 (base 0.25), err=0.0% (base 0.0%), p95=47.1ms (base 30.0ms)\nimage-provider: rps=2.876 (base 2.501), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.2 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ncurrency: rps=0.625 (base 0.892), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nproduct-catalog: rps=3.884 (base 4.118), err=0.0% (base 0.0%), p95=691.9ms (base 716.8ms)\ncart: rps=1.175 (base 1.059), err=0.0% (base 0.0%), p95=38.5ms (base 41.4ms)\nrecommendation: rps=0.6 (base 0.659), err=0.0% (base 0.0%), p95=693.3ms (base 752.5ms)\nemail: rps=0.0 (base 0.05), err=0.0% (base 0.0%), p95=Nonems (base 47.0ms)\npayment: rps=0.0 (base 0.05), err=0.0% (base 0.0%), p95=Nonems (base 38.0ms)\nquote: rps=0.0 (base 0.125), err=0.0% (base 0.0%), p95=Nonems (base 20.0ms)",
-      "ts": 1792786647.9597979
+      "summary": "Service RED, worst first:\nshipping: rps=0.158 (base 0.175), err=100.0% (base 0.0%), p95=4850.0ms (base 49.8ms)\ncheckout: rps=0.042 (base 0.05), err=100.0% (base 0.0%), p95=9750.0ms (base 13500.0ms)\nfrontend: rps=10.444 (base 10.494), err=1.8% (base 0.0%), p95=1118.9ms (base 667.1ms)\nfrontend-proxy: rps=10.527 (base 10.028), err=0.4% (base 0.0%), p95=881.4ms (base 589.6ms)\nad: rps=0.325 (base 0.25), err=0.0% (base 0.0%), p95=47.1ms (base 30.0ms)\nimage-provider: rps=2.876 (base 2.501), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.2 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ncurrency: rps=0.625 (base 0.892), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nproduct-catalog: rps=3.884 (base 4.118), err=0.0% (base 0.0%), p95=691.9ms (base 716.8ms)\ncart: rps=1.175 (base 1.059), err=0.0% (base 0.0%), p95=38.5ms (base 41.4ms)\nrecommendation: rps=0.6 (base 0.659), err=0.0% (base 0.0%), p95=693.3ms (base 752.5ms)\nemail: rps=0.0 (base 0.05), err=0.0% (base 0.0%), p95=n/a (base 47.0ms)\npayment: rps=0.0 (base 0.05), err=0.0% (base 0.0%), p95=n/a (base 38.0ms)\nquote: rps=0.0 (base 0.125), err=0.0% (base 0.0%), p95=n/a (base 20.0ms)",
+      "ts": 1792833255.5418413
     },
     {
       "id": "ev-004",
@@ -182,7 +259,7 @@
       },
       "source": "docker logs --since 3m --timestamps frontend",
       "summary": "frontend: 609 log lines in last 3m, 69 matched error/warn patterns.\n  x18: 2026-10-23T19:36:38.294915196Z {\"level\":50,\"time\":1792784198293,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"57d33e4023e7e3bb5b5b54b7603b346f\",\"span_id\":\"48407f6ac4484e77\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"HTTP error: 500 Internal Server Error - Failed to get quote: code: 'Unknown error', message: \\\"Failed to call quote service: Failed to connect to host: Failed resolving hostna\n  x9: 2026-10-23T19:36:38.296588612Z Error: HTTP error: 500 Internal Server Error - Failed to get quote: code: 'Unknown error', message: \"Failed to call quote service: Failed to connect to host: Failed resolving hostname: failed to lookup address information: Name or service not known\"\n  x9: 2026-10-23T19:37:02.872740975Z Error: HTTP error: 500 Internal Server Error - Failed to get quote: code: 'Unknown error', message: \"Failed to call quote service: Failed to connect to host: Failed resolving hostname: failed to lookup address information: No address associated with hostname\"\n  x8: 2026-10-23T19:37:12.127551466Z {\"level\":50,\"time\":1792784232120,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"a5d1b5c282b1feb9c3de3b3591f8c966\",\"span_id\":\"8ea51c5fececf3e7\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"13 INTERNAL: shipping quote failure: failed POST to shipping service: expected 200, got 500\",\"stack\":\"Error: 13 INTERNAL: shipping quote failure: failed POST to shipping servi\n  x8: 2026-10-23T19:37:12.127668398Z {\"level\":30,\"time\":1792784232123,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"a5d1b5c282b1feb9c3de3b3591f8c966\",\"span_id\":\"8ea51c5fececf3e7\",\"trace_flags\":\"01\",\"http.request.method\":\"POST\",\"url.path\":\"/api/checkout\",\"http.response.status_code\":500,\"msg\":\"API request completed\"}\n  x5: 2026-10-23T19:36:52.625519556Z {\"level\":30,\"time\":1792784212624,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"49d68b5b866d775500c499da13bd4939\",\"span_id\":\"29febf45c00f379c\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/cart\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x4: 2026-10-23T19:37:05.004725327Z {\"level\":30,\"time\":1792784225004,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"23f4b2d993ea4a0df26c13a0398d5fe8\",\"span_id\":\"39ba8b0f244dee06\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/recommendations\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}\n  x2: 2026-10-23T19:37:27.528363829Z {\"level\":30,\"time\":1792784247525,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"4a087e75039dd50a45185292556cfb2a\",\"span_id\":\"dfbef28492e9be1b\",\"trace_flags\":\"01\",\"http.request.method\":\"GET\",\"url.path\":\"/api/products\",\"http.response.status_code\":200,\"msg\":\"API request completed\"}",
-      "ts": 1792786648.0418696
+      "ts": 1792833255.6191623
     },
     {
       "id": "ev-005",
@@ -193,7 +270,7 @@
       },
       "source": "docker logs --since 3m --timestamps image-provider",
       "summary": "image-provider: 454 log lines in last 3m, 10 matched error/warn patterns.\n  x2: 2026-10-23T19:37:38.750084296Z 172.19.0.26 - - [23/Oct/2026:19:37:38 +0000] \"GET /products/EclipsmartTravelRefractorTelescope.jpg HTTP/1.1\" 200 347245 \"http://frontend-proxy:8080/cart\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x2: 2026-10-23T19:37:47.533985034Z 172.19.0.26 - - [23/Oct/2026:19:37:47 +0000] \"GET /opentelemetry-demo-logo.png HTTP/1.1\" 200 100140 \"http://frontend-proxy:8080/cart\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:36:47.445235034Z 172.19.0.26 - - [23/Oct/2026:19:36:47 +0000] \"GET /products/OpticalTubeAssembly.jpg HTTP/1.1\" 200 22201 \"http://frontend-proxy:8080/\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:36:47.445503468Z 172.19.0.26 - - [23/Oct/2026:19:36:47 +0000] \"GET /products/LensCleaningKit.jpg HTTP/1.1\" 200 101928 \"http://frontend-proxy:8080/\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:37:57.609153503Z 172.19.0.26 - - [23/Oct/2026:19:37:57 +0000] \"GET /products/StarsenseExplorer.jpg HTTP/1.1\" 200 29713 \"http://frontend-proxy:8080/product/2ZYFJ3GM2N\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:38:10.750092592Z 172.19.0.26 - - [23/Oct/2026:19:38:10 +0000] \"GET /opentelemetry-demo-logo.png HTTP/1.1\" 200 100140 \"http://frontend-proxy:8080/\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:39:05.326895500Z 172.19.0.26 - - [23/Oct/2026:19:39:05 +0000] \"GET /products/EclipsmartTravelRefractorTelescope.jpg HTTP/1.1\" 200 347245 \"http://frontend-proxy:8080/\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"\n  x1: 2026-10-23T19:39:25.502585503Z 172.19.0.26 - - [23/Oct/2026:19:39:25 +0000] \"GET /products/LensCleaningKit.jpg HTTP/1.1\" 200 101928 \"http://frontend-proxy:8080/cart\" \"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36\"",
-      "ts": 1792786648.107718
+      "ts": 1792833255.6901069
     },
     {
       "id": "ev-006",
@@ -205,7 +282,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=shipping&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=shipping&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
-      "ts": 1792786648.1243002
+      "ts": 1792833255.7218184
     },
     {
       "id": "ev-007",
@@ -217,7 +294,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
-      "ts": 1792786648.1245039
+      "ts": 1792833255.7233024
     },
     {
       "id": "ev-008",
@@ -229,7 +306,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
-      "ts": 1792786648.1249034
+      "ts": 1792833255.76387
     },
     {
       "id": "ev-009",
@@ -241,7 +318,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=5m&limit=30",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=5m&limit=30",
-      "ts": 1792786648.1252315
+      "ts": 1792833255.7639964
     },
     {
       "id": "ev-010",
@@ -251,7 +328,7 @@
       },
       "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))",
       "summary": "14 services, 10 min history at 30s steps",
-      "ts": 1792786648.1307979
+      "ts": 1792833255.9214926
     },
     {
       "id": "ev-011",
@@ -261,7 +338,7 @@
       },
       "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
       "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
-      "ts": 1792786648.1383731
+      "ts": 1792833255.9318771
     },
     {
       "id": "ev-012",
@@ -270,8 +347,8 @@
         "graph_edges": 28
       },
       "source": "rca.analyze over ev-010 + ev-011 on the merged call graph",
-      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: quote 68%, shipping 21%, checkout 11%\n  root: quote [service_down] - graph RCA: quote ranks #1 (share 68%); own anomaly down up->service_down (z=99.0); its callers broke after it: checkout +1s, shipping +61s",
-      "ts": 1792786648.1527371
+      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: quote 68%, shipping 21%, checkout 11%\n  root: quote [service_down] - graph RCA: quote ranks #1 (share 68%); evidence: Docker reports it service down; its callers broke after it: checkout +1s, shipping +61s",
+      "ts": 1792833256.110075
     }
   ],
   "redactions": 0,

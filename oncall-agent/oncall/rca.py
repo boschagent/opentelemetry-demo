@@ -303,8 +303,14 @@ def analyze(svc_series: dict, cont_series: dict, graph: dict[str, set], hard: di
         anc = ancestors(graph, node)
         lag = sorted((anom[x]["onset"] - an["onset"], x) for x in anc
                      if x in anom and anom[x]["onset"] is not None and an["onset"] is not None)
-        why = (f"graph RCA: {node} ranks #{len(roots) + 1} (share {share:.0%}); own anomaly "
-               + ", ".join(f"{k} {v['ref']}->{v['now']} (z={v['z']})" for k, v in an["kinds"].items()))
+        def _k(k, v):
+            if k == "down":
+                return f"Docker reports it {v['now'].replace('_', ' ')}"
+            names = {"err": "error rate", "p95": "p95 latency", "cpu": "CPU %", "mem": "memory %", "rps_up": "traffic",
+                     "rps_down": "traffic"}
+            return f"{names.get(k, k)} {v['ref']} -> {v['now']} (robust z={v['z']})"
+        why = (f"graph RCA: {node} ranks #{len(roots) + 1} (share {share:.0%}); evidence: "
+               + "; ".join(_k(k, v) for k, v in an["kinds"].items()))
         if lag:
             why += "; its callers broke after it: " + ", ".join(f"{x} +{int(d)}s" for d, x in lag[:3] if d >= 0)
         roots.append({"node": comp, "service": node, "fault_class": cls, "share": share, "a": an["a"], "why": why,

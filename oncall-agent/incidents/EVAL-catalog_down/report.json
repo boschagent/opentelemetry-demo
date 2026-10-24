@@ -1,27 +1,35 @@
 {
   "incident_id": "EVAL-catalog_down",
   "status": "diagnosed",
-  "detected_at": "2026-10-24T01:47:22",
+  "detected_at": "2026-10-24T14:44:06",
   "alert": "eval catalog_down",
   "root_cause": {
     "component": "product-catalog",
     "fault_class": "service_down",
-    "summary": "product-catalog: service down. container product-catalog status=exited exit_code=137",
+    "summary": "product-catalog: service down. container product-catalog status=exited exit_code=137; product-catalog stopped serving: 0.0/s now vs 0.467/s at baseline, and none of its callers went quiet.",
     "alternatives": [
       "recommendation [app_errors] score=0.25",
       "frontend [app_errors] score=0.15"
     ],
     "secondary": [],
     "mode": "triage-only",
-    "notes": []
+    "notes": [
+      "few-shot memory agrees (0.97 similar past incident was service_down)"
+    ]
   },
-  "confidence": 0.81,
+  "confidence": 0.878,
   "evidence": [
     {
       "id": "ev-001",
       "tool": "container_health",
       "source": "docker ps -a; docker inspect <all>",
-      "observation": "container product-catalog status=exited exit_code=137"
+      "observation": "!! product-catalog: status=exited health=unhealthy restarts=2 oom=False exit=137 finished_at=2026-10-23T19:08:52.594975948Z"
+    },
+    {
+      "id": "ev-003",
+      "tool": "service_red",
+      "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
+      "observation": "product-catalog: rps=0.0 (base 0.467), err=0.0% (base 0.0%), p95=n/a (base 15000.0ms)"
     }
   ],
   "proposed_action": {
@@ -36,16 +44,16 @@
   "verification": null,
   "timeline": [
     {
-      "time": "2026-10-24T01:47:22",
+      "time": "2026-10-24T14:44:06",
       "event": "alert received: eval catalog_down"
     },
     {
-      "time": "2026-10-24T01:47:22",
+      "time": "2026-10-24T14:44:07",
       "event": "triage: 3 suspects, top=product-catalog/service_down"
     },
     {
-      "time": "2026-10-24T01:47:23",
-      "event": "diagnosis: product-catalog [service_down] conf=0.81"
+      "time": "2026-10-24T14:44:07",
+      "event": "diagnosis: product-catalog [service_down] conf=0.878"
     }
   ],
   "prevention": [
@@ -55,6 +63,14 @@
   "escalation_reason": null,
   "rejected_evidence": [],
   "memory_hits": [
+    {
+      "incident_id": "EVAL-catalog_down",
+      "component": "product-catalog",
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "status": "diagnosed",
+      "summary": "product-catalog: service down. container product-catalog status=exited exit_code=137; product-catalog stopped serving: 0.0/s now vs 0.467/s at baseline, and none of its callers went quiet."
+    },
     {
       "incident_id": "INC-20261024-004255-catalog_down",
       "component": "product-catalog",
@@ -69,25 +85,33 @@
       "fault_class": "service_down",
       "action": "restart_service",
       "status": "diagnosed",
-      "summary": "cart: service down. container cart status=exited exit_code=137"
-    },
-    {
-      "incident_id": "INC-20261024-014653-combo_cart_ad",
-      "component": "cart",
-      "fault_class": "service_down",
-      "action": "restart_service",
-      "status": "diagnosed",
-      "summary": "cart: service down. container cart status=exited exit_code=0 graph RCA: cart ranks #1 (share 42%); own anomaly rps_down 1.2585->0.0 (z=10.0); its callers broke after it: checkout +0s, frontend +0s, fr"
+      "summary": "cart: service down. container cart status=exited exit_code=0."
     }
   ],
   "fewshot": [
     {
-      "similarity": 0.5,
+      "similarity": 0.971,
       "fault_class": "service_down",
       "action": "restart_service",
-      "outcome": "resolved (verified)",
-      "source": "INC-20261023-224228-cart_down",
-      "shape": "cls:service_down, cls:dependency_unreachable, instrumented, combined"
+      "outcome": "labelled practice incident",
+      "source": "quote_down",
+      "shape": "cls:service_down, instrumented, others_disturbed, rca_agrees"
+    },
+    {
+      "similarity": 0.878,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "cart_down",
+      "shape": "cls:service_down, rca:rps_down, instrumented, others_disturbed, rca_agrees"
+    },
+    {
+      "similarity": 0.866,
+      "fault_class": "service_down",
+      "action": "restart_service",
+      "outcome": "labelled practice incident",
+      "source": "valkey",
+      "shape": "cls:service_down, others_disturbed, rca_agrees"
     }
   ],
   "llm": {
@@ -100,12 +124,14 @@
     {
       "component": "product-catalog",
       "fault_class": "service_down",
-      "score": 0.9,
+      "score": 0.96,
       "rationale": [
-        "container product-catalog status=exited exit_code=137"
+        "container product-catalog status=exited exit_code=137",
+        "product-catalog stopped serving: 0.0/s now vs 0.467/s at baseline, and none of its callers went quiet"
       ],
       "evidence": [
-        "ev-001"
+        "ev-001",
+        "ev-003"
       ],
       "suggested_action": "restart_service"
     },
@@ -136,6 +162,76 @@
       "suggested_action": "restart_service"
     }
   ],
+  "rca": {
+    "roots": [
+      {
+        "node": "product-catalog",
+        "service": "product-catalog",
+        "fault_class": "service_down",
+        "share": 0.488,
+        "a": 1.0,
+        "why": "graph RCA: product-catalog ranks #1 (share 49%); evidence: Docker reports it service down; its callers broke after it: checkout +1s, frontend +1s, recommendation +1s",
+        "latency_only": false,
+        "onset_rel_s": -272
+      }
+    ],
+    "anomalous": {
+      "checkout": {
+        "a": 1.0,
+        "kinds": [
+          "err"
+        ]
+      },
+      "frontend": {
+        "a": 1.0,
+        "kinds": [
+          "err"
+        ]
+      },
+      "frontend-proxy": {
+        "a": 1.0,
+        "kinds": [
+          "err"
+        ]
+      },
+      "recommendation": {
+        "a": 1.0,
+        "kinds": [
+          "err"
+        ]
+      },
+      "product-catalog": {
+        "a": 1.0,
+        "kinds": [
+          "down"
+        ]
+      }
+    },
+    "ranking": [
+      [
+        "product-catalog",
+        0.488
+      ],
+      [
+        "frontend",
+        0.185
+      ],
+      [
+        "checkout",
+        0.144
+      ],
+      [
+        "recommendation",
+        0.143
+      ],
+      [
+        "frontend-proxy",
+        0.039
+      ]
+    ],
+    "combined": false
+  },
+  "combination": false,
   "ledger": [
     {
       "id": "ev-001",
@@ -143,7 +239,7 @@
       "args": {},
       "source": "docker ps -a; docker inspect <all>",
       "summary": "23 demo containers (compose project 'opentelemetry-demo'); 21 running normally. Ignored 3 unrelated containers.\n  !! astronomy-db: status=running health=healthy restarts=0 oom=True exit=0 finished_at=0001-01-01T00:00:00Z\n  !! product-catalog: status=exited health=unhealthy restarts=2 oom=False exit=137 finished_at=2026-10-23T19:08:52.594975948Z",
-      "ts": 1792786642.6982129
+      "ts": 1792833246.7072432
     },
     {
       "id": "ev-002",
@@ -151,15 +247,15 @@
       "args": {},
       "source": "docker stats --no-stream",
       "summary": "Top resource users (cpu 100% = 1 core; mem % of container limit):\ncheckout: cpu=109.52% mem=74.51% (14.9MiB / 20MiB)\nfrontend: cpu=2.89% mem=95.25% (238.1MiB / 250MiB)\nopensearch: cpu=5.53% mem=91.48% (936.8MiB / 1GiB)\nad: cpu=1.41% mem=87.92% (263.7MiB / 300MiB)\nquote: cpu=0.03% mem=78.51% (31.4MiB / 40MiB)\npayment: cpu=18.25% mem=73.38% (102.7MiB / 140MiB)\nfrontend-proxy: cpu=4.75% mem=69.39% (62.45MiB / 90MiB)\nshipping: cpu=0.45% mem=69.18% (13.84MiB / 20MiB)\ngrafana: cpu=3.6% mem=67.12% (335.6MiB / 500MiB)\nemail: cpu=0.12% mem=64.06% (64.06MiB / 100MiB)\nastronomy-db: cpu=0.0% mem=63.84% (51.07MiB / 80MiB)\nvalkey-cart: cpu=0.44% mem=58.11% (11.62MiB / 20MiB)\nrecommendation: cpu=0.66% mem=56.96% (284.8MiB / 500MiB)\nprometheus: cpu=2.2% mem=48.02% (96.05MiB / 200MiB)\nload-generator: cpu=17.2% mem=45.24% (678.6MiB / 1.465GiB)",
-      "ts": 1792786642.7023869
+      "ts": 1792833246.7260964
     },
     {
       "id": "ev-003",
       "tool": "service_red",
       "args": {},
       "source": "PromQL:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m] offset 10m))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m] offset 10m)))",
-      "summary": "Service RED, worst first:\nrecommendation: rps=0.208 (base 0.15), err=100.0% (base 0.0%), p95=4062.5ms (base 15000.0ms)\ncheckout: rps=0.025 (base 0.025), err=100.0% (base 0.0%), p95=1910.0ms (base 15000.0ms)\nfrontend: rps=4.393 (base 3.309), err=38.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\nfrontend-proxy: rps=3.092 (base 3.059), err=22.9% (base 7.1%), p95=1670.0ms (base 15000.0ms)\ncurrency: rps=0.083 (base 0.133), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.192 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nimage-provider: rps=0.417 (base 0.433), err=0.0% (base 0.0%), p95=1.9ms (base 2.0ms)\ncart: rps=0.433 (base 0.392), err=0.0% (base 0.0%), p95=48.4ms (base 77.5ms)\nad: rps=0.158 (base 0.125), err=0.0% (base 0.0%), p95=42.4ms (base 162.5ms)\nemail: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=Nonems (base Nonems)\npayment: rps=0.0 (base 0.025), err=0.0% (base 0.0%), p95=Nonems (base 390.0ms)\nproduct-catalog: rps=0.0 (base 0.467), err=0.0% (base 0.0%), p95=Nonems (base 15000.0ms)\nquote: rps=0.0 (base 0.008), err=0.0% (base 0.0%), p95=Nonems (base 1.9ms)\nshipping: rps=0.0 (base 0.033), err=0.0% (base 0.0%), p95=Nonems (base 48.0ms)",
-      "ts": 1792786642.7303672
+      "summary": "Service RED, worst first:\nrecommendation: rps=0.208 (base 0.15), err=100.0% (base 0.0%), p95=4062.5ms (base 15000.0ms)\ncheckout: rps=0.025 (base 0.025), err=100.0% (base 0.0%), p95=1910.0ms (base 15000.0ms)\nfrontend: rps=4.393 (base 3.309), err=38.0% (base 0.0%), p95=15000.0ms (base 15000.0ms)\nfrontend-proxy: rps=3.092 (base 3.059), err=22.9% (base 7.1%), p95=1670.0ms (base 15000.0ms)\ncurrency: rps=0.083 (base 0.133), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\ntelemetry-docs: rps=0.192 (base 0.192), err=0.0% (base 0.0%), p95=1.9ms (base 1.9ms)\nimage-provider: rps=0.417 (base 0.433), err=0.0% (base 0.0%), p95=1.9ms (base 2.0ms)\ncart: rps=0.433 (base 0.392), err=0.0% (base 0.0%), p95=48.4ms (base 77.5ms)\nad: rps=0.158 (base 0.125), err=0.0% (base 0.0%), p95=42.4ms (base 162.5ms)\nemail: rps=0.0 (base 0.0), err=0.0% (base 0.0%), p95=n/a (base n/a)\npayment: rps=0.0 (base 0.025), err=0.0% (base 0.0%), p95=n/a (base 390.0ms)\nproduct-catalog: rps=0.0 (base 0.467), err=0.0% (base 0.0%), p95=n/a (base 15000.0ms)\nquote: rps=0.0 (base 0.008), err=0.0% (base 0.0%), p95=n/a (base 1.9ms)\nshipping: rps=0.0 (base 0.033), err=0.0% (base 0.0%), p95=n/a (base 48.0ms)",
+      "ts": 1792833246.731062
     },
     {
       "id": "ev-004",
@@ -170,7 +266,7 @@
       },
       "source": "docker logs --since 3m --timestamps frontend",
       "summary": "frontend: 1391 log lines in last 3m, 445 matched error/warn patterns.\n  x82: 2026-10-23T19:11:12.325323383Z {\"level\":50,\"time\":1792782672324,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"f8f99846226f5372e0f39242c522a47d\",\"span_id\":\"f4e46aca3f183047\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 172.19.0.20:3550. Resolution note: \",\"stack\":\"Error: 14 UNAVAILABLE: No connection establish\n  x82: 2026-10-23T19:11:12.325767019Z Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 172.19.0.20:3550. Resolution note: \n  x82: 2026-10-23T19:11:12.325816175Z   details: 'No connection established. Last error: Error: connect EHOSTUNREACH 172.19.0.20:3550. Resolution note: ',\n  x34: 2026-10-23T19:10:40.111732537Z {\"level\":50,\"time\":1792782640110,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"5f8f86a4461e0e3359c362f49a4d9052\",\"span_id\":\"01475e76a22bf9e9\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"14 UNAVAILABLE: Unable to resolve host product-catalog\",\"stack\":\"Error: 14 UNAVAILABLE: Unable to resolve host product-catalog\\n    at callErrorFromStatus (/app/node_modules/@\n  x34: 2026-10-23T19:10:40.113130437Z Error: 14 UNAVAILABLE: Unable to resolve host product-catalog\n  x33: 2026-10-23T19:11:08.839286473Z {\"level\":50,\"time\":1792782668838,\"pid\":1,\"hostname\":\"be2bbc4e0ad9\",\"trace_id\":\"090e68e9f438d0f5c6a9709fe0c91176\",\"span_id\":\"de3a607eb74b63c8\",\"trace_flags\":\"01\",\"err\":{\"type\":\"Error\",\"message\":\"14 UNAVAILABLE: No connection established. Last error: Error: connect ETIMEDOUT 172.19.0.20:3550. Resolution note: \",\"stack\":\"Error: 14 UNAVAILABLE: No connection established.\n  x33: 2026-10-23T19:11:08.840656590Z Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect ETIMEDOUT 172.19.0.20:3550. Resolution note: \n  x33: 2026-10-23T19:11:08.840687215Z   details: 'No connection established. Last error: Error: connect ETIMEDOUT 172.19.0.20:3550. Resolution note: ',",
-      "ts": 1792786642.8698726
+      "ts": 1792833246.9698012
     },
     {
       "id": "ev-005",
@@ -181,7 +277,7 @@
       },
       "source": "docker logs --since 3m --timestamps recommendation",
       "summary": "recommendation: 416 log lines in last 3m, 34 matched error/warn patterns.\n  x23: 2026-10-23T19:10:40.933082285Z 2026-10-23T19:10:40.931Z  WARN 1 --- [recommendation] [lt-executor-458] io.grpc.internal.ManagedChannelImpl      : [Channel<1>: (product-catalog:3550)] Failed to resolve name. status=Status{code=UNAVAILABLE, description=Unable to resolve host product-catalog, cause=java.net.UnknownHostException: product-catalog\n  x5: 2026-10-23T19:11:17.044313942Z 2026-10-23T19:11:17.043Z  WARN 1 --- [recommendation] [lt-executor-457] io.grpc.internal.ManagedChannelImpl      : [Channel<1>: (product-catalog:3550)] Failed to resolve name. status=Status{code=UNAVAILABLE, description=Unable to resolve host product-catalog, cause=java.net.UnknownHostException: product-catalog: No address associated with hostname\n  x3: 2026-10-23T19:10:40.108429280Z 2026-10-23T19:10:40.107Z  WARN 1 --- [recommendation] [lt-executor-457] io.grpc.internal.ManagedChannelImpl      : [Channel<1>: (product-catalog:3550)] Failed to resolve name. status=Status{code=UNAVAILABLE, description=Unable to resolve host product-catalog, cause=java.net.UnknownHostException: product-catalog: Name or service not known\n  x1: 2026-10-23T19:10:42.347752845Z 2026-10-23T19:10:42.346Z  WARN 1 --- [recommendation] [worker-ELG-1-22] io.grpc.internal.ManagedChannelImpl      : [Channel<1>: (product-catalog:3550)] Failed to resolve name. status=Status{code=UNAVAILABLE, description=Unable to resolve host product-catalog, cause=java.net.UnknownHostException: product-catalog\n  x1: 2026-10-23T19:11:05.004361503Z \tat io.grpc.internal.DnsNameResolver.doResolve(DnsNameResolver.java:267)\n  x1: 2026-10-23T19:11:42.721750385Z \tat java.base/java.net.InetAddress.getAddressesFromNameService(Unknown Source)",
-      "ts": 1792786642.9715562
+      "ts": 1792833247.000187
     },
     {
       "id": "ev-006",
@@ -193,7 +289,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=recommendation&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=recommendation&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%2",
-      "ts": 1792786642.9719563
+      "ts": 1792833247.000838
     },
     {
       "id": "ev-007",
@@ -205,7 +301,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=checkout&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
-      "ts": 1792786642.9720778
+      "ts": 1792833247.0010102
     },
     {
       "id": "ev-008",
@@ -217,7 +313,7 @@
       },
       "source": "http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
       "summary": "Jaeger query failed: replay: no recording for http http://localhost:8080/jaeger/ui/api/traces?service=frontend&lookback=10m&limit=20&tags=%7B%22error%22%3A+%22true%22%7D",
-      "ts": 1792786642.9721715
+      "ts": 1792833247.0011175
     },
     {
       "id": "ev-009",
@@ -227,7 +323,7 @@
       },
       "source": "PromQL range:\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[3m]))\nsum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[3m]))\nhistogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\"}[3m])))",
       "summary": "14 services, 10 min history at 30s steps",
-      "ts": 1792786642.977155
+      "ts": 1792833247.0050821
     },
     {
       "id": "ev-010",
@@ -237,7 +333,7 @@
       },
       "source": "PromQL range: max by (container_name) (container_cpu_utilization_ratio), max by (container_name) (container_memory_percent_ratio)",
       "summary": "container history for 23 containers ({'cpu': 'container_cpu_utilization_ratio', 'mem': 'container_memory_percent_ratio'})",
-      "ts": 1792786642.9829695
+      "ts": 1792833247.0104377
     },
     {
       "id": "ev-011",
@@ -246,8 +342,8 @@
         "graph_edges": 28
       },
       "source": "rca.analyze over ev-009 + ev-010 on the merged call graph",
-      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: product-catalog 49%, frontend 18%, checkout 14%, recommendation 14%, frontend-proxy 4%\n  root: product-catalog [service_down] - graph RCA: product-catalog ranks #1 (share 49%); own anomaly down up->service_down (z=99.0); its callers broke after it: checkout +1s, frontend +1s, recommendation +1s",
-      "ts": 1792786642.9955368
+      "summary": "Graph RCA (anomaly scores on the learned call graph, random-walk ranking, onset ordering):\n  ranking: product-catalog 49%, frontend 18%, checkout 14%, recommendation 14%, frontend-proxy 4%\n  root: product-catalog [service_down] - graph RCA: product-catalog ranks #1 (share 49%); evidence: Docker reports it service down; its callers broke after it: checkout +1s, frontend +1s, recommendation +1s",
+      "ts": 1792833247.0372453
     }
   ],
   "redactions": 0,

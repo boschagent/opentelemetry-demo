@@ -288,7 +288,7 @@ def _investigate_and_record(name: str, cfg: Config, wait: int, auto: bool, use_l
     if auto:   # unattended practice: dry-run only, so the automatic "yes" can never change anything
         cfg.dry_run = True
         kw["input_fn"] = lambda _p: (print("approve? > yes   (automatic, DRY-RUN practice: nothing will change)") or "yes")
-    rep = investigate_incident(be, cfg, f"practice incident '{name}' (alert: on-call page)", use_llm, act=True,
+    rep = investigate_incident(be, cfg, "on-call page: the shop's alert fired; nothing else is known", use_llm, act=True,
                                incident_id=time.strftime(f"INC-%Y%m%d-%H%M%S-{name}"), **kw)
     write_label(name)
     rc = rep["root_cause"]

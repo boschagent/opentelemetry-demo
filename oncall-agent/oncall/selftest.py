@@ -478,6 +478,141 @@ def t_decide_escalates_when_unsure():
     assert d2["escalate"], d2
 
 
+@test
+def t_reviewer_disagreement_needs_evidence():
+    """REQ (from the live run 24 Oct): a reviewer that disagrees but names no alternative the evidence supports cannot
+    block a well-supported fix; a disagreement backed by a supported alternative still forces escalation."""
+    L = Ledger()
+    ev = L.add("container_health", {}, "docker inspect", "cart: status=exited", None).id
+    tri = {"suspects": [{"component": "cart", "fault_class": "service_down", "score": 0.95, "rationale": ["cart exited"], "evidence": [ev]},
+                        {"component": "valkey-cart", "fault_class": "service_down", "score": 0.5, "rationale": ["v"], "evidence": []}],
+           "combination": False, "signals": {}}
+    raw = {"component": "cart", "fault_class": "service_down", "summary": "cart is down", "confidence": 0.8, "evidence": []}
+    weak = brain.decide(CFG, tri, raw, L, {"verdict": "disagree", "reason": "maybe redis", "better_component": "redis-x"})
+    strong = brain.decide(CFG, tri, raw, L, {"verdict": "disagree", "reason": "valkey first", "better_component": "valkey-cart"})
+    assert not weak["escalate"] and strong["escalate"], (weak["confidence"], strong["confidence"])
+    from .tools import metrics
+    r = metrics.prom_query(FakeDemo(scenario("healthy")), CFG, 'up{container="nope"}')
+    assert "NO DATA" in r["summary"] or r["data"], r
+
+
+@test
+def t_llm_prose_checked_against_docker():
+    """REQ (from the live run 24 Oct): the LLM wrote 'valkey-cart is not running (up metric = 0)' from an empty
+    Prometheus query while Docker showed valkey-cart running. An empty result is not evidence, and a summary that
+    contradicts Docker is replaced by the evidence-based one; a correct summary is kept word for word."""
+    L = Ledger()
+    rows = [{"name": "cart", "status": "exited", "health": None}, {"name": "valkey-cart", "status": "running", "health": None},
+            {"name": "frontend", "status": "running", "health": None}]
+    hc = L.add("container_health", {}, "docker inspect", "!! cart: status=exited exit=0", rows).id
+    tr = L.add("find_error_traces", {"service": "frontend"}, "jaeger", "client call from frontend to 'cart' failed with NO server span: 16 traces", None).id
+    empty = L.add("prom_query", {"query": 'up{container="valkey-cart"}'}, "prom", "0 series: NO DATA. This metric or label does not exist here.", None).id
+    tri = {"suspects": [{"component": "cart", "fault_class": "service_down", "score": 0.977,
+                         "rationale": ["container cart status=exited exit_code=0"], "evidence": [hc]}], "combination": False, "signals": {}}
+    ev = [{"id": hc, "observation": "cart: status=exited exit=0"}, {"id": tr, "observation": "16 traces with no cart server span"},
+          {"id": empty, "observation": "valkey-cart up = 0"}]
+    bad = {"component": "cart", "fault_class": "service_down", "confidence": 0.9, "evidence": ev,
+           "summary": "The cart container has exited (status=exited, exit_code=0) and its dependent valkey-cart store is not running (up metric = 0)."}
+    d = brain.decide(CFG, tri, bad, L, {"verdict": "agree", "reason": "", "better_component": None})
+    assert "valkey-cart" not in d["summary"] and d["summary"].startswith("cart: service down"), d["summary"]
+    assert any("Docker shows valkey-cart running" in n for n in d["notes"]), d["notes"]
+    assert [x["item"] for x in d["rejected_evidence"]] == [empty] and empty not in [e["id"] for e in d["evidence"]], d
+    assert not d["escalate"] and d["confidence"] >= 0.9, d["confidence"]      # an empty result is dropped, not punished
+    good = dict(bad, summary="The cart container has exited (exit code 0), so frontend calls to cart never reach a cart server span.")
+    assert brain.decide(CFG, tri, good, L, None)["summary"] == good["summary"]
+    assert brain.check_claims("valkey-cart is running; cart is down.", L) == []
+
+
+@test
+def t_llm_cannot_relabel_docker_facts():
+    """REQ (from the live run 24 Oct 12:20): Docker showed ad's CPU limit cut from 22 to 0.05 cores, triage said
+    cpu_starved, and the LLM re-labelled it latency_degradation ('CPU well within limits'). What Docker observes is a
+    fact: the class stays cpu_starved and the summary and evidence lines come from the tools, not the LLM's paraphrase.
+    A judgement class (app_errors vs latency) is still the LLM's to choose."""
+    L = Ledger()
+    lim = L.add("container_health", {}, "docker inspect", "ad: cpu_limit_cores=0.05", [{"name": "ad", "status": "running", "health": None}]).id
+    st = L.add("container_stats", {}, "docker stats", "ad: cpu=0.75% mem=83.29% (249.9MiB / 300MiB)", None).id
+    tri = {"suspects": [{"component": "ad", "fault_class": "cpu_starved", "score": 0.88, "evidence": [lim],
+                         "rationale": ["ad CPU limit is 0.05 cores (healthy baseline: 22.0) - lowered"]}], "combination": False, "signals": {}}
+    raw = {"component": "ad", "fault_class": "latency_degradation", "confidence": 0.68,
+           "summary": "ad latency rose while CPU is well within limits, so this is not resource starvation.",
+           "evidence": [{"id": st, "observation": "ad: cpu=0.75% - not CPU-starved"}]}
+    d = brain.decide(CFG, tri, raw, L, None)
+    assert d["fault_class"] == "cpu_starved" and d["summary"].startswith("ad: cpu starved. ad CPU limit is 0.05 cores"), d
+    assert "not CPU-starved" not in json.dumps(d["evidence"]) and [e["id"] for e in d["evidence"]] == [lim, st], d["evidence"]
+    assert any("Docker observed cpu_starved" in n for n in d["notes"]), d["notes"]
+    tri2 = {"suspects": [dict(tri["suspects"][0], fault_class="app_errors", score=0.7)], "combination": False, "signals": {}}
+    assert brain.decide(CFG, tri2, raw, L, None)["fault_class"] == "latency_degradation"
+
+
+@test
+def t_real_recordings_reach_the_agent_flag_free():
+    """REQ (never read flag state, measured on REAL data): the 10 incidents recorded on our laptop hold tens of thousands
+    of feature-flag mentions in raw telemetry (span events, tags, log lines). Replayed through triage and every tool the
+    LLM can call, none of it reaches the evidence ledger; a direct query for flag metrics is refused, not run."""
+    import glob
+    import re as _re
+    flag = _re.compile(r"(?i)feature.?flag|flagd|openfeature")
+    bundles = sorted(glob.glob(os.path.join("eval", "bundles", "*", "calls.jsonl")))
+    if not bundles:
+        return                                            # a fresh clone without recordings: nothing to measure
+    raw_total = 0
+    for b in bundles:
+        raw_total += len(flag.findall(open(b, encoding="utf-8").read()))
+        be, L = Backend(mode="replay", bundle=os.path.dirname(b)), Ledger()
+        cfg = Config(llm_base_url="", llm_model="", baseline_file=os.path.join("eval", "baseline.json"))
+        Triage(be, cfg, L).run()
+        for tool, args in (("get_logs", {"service": "ad", "minutes": 10}), ("get_logs", {"service": "checkout", "minutes": 10}),
+                           ("find_error_traces", {"service": "frontend", "lookback": "10m"}),
+                           ("prom_query", {"query": "sum(rate(feature_flag_evaluation_requests_total[5m]))"}),
+                           ("deploy_history", {"minutes": 120})):
+            brain.run_tool(be, cfg, L, tool, args)
+        for e in L.items.values():
+            seen = json.dumps({"summary": e.summary, "raw": e.raw, "source": e.source}, default=str)
+            assert not flag.search(seen), (b, e.id, e.tool, flag.search(seen).group(0))
+            if e.tool == "prom_query":
+                assert e.source == "(not run)", e.source
+    assert raw_total > 1000, raw_total                    # the recordings really did contain flag data to strip
+
+
+@test
+def t_detector_needs_two_anomalous_polls():
+    """REQ (detection): the unattended detector (--watch) runs triage every 20 s and starts an investigation only after
+    2 anomalous polls in a row, telling the agent only what the detector itself saw; a healthy shop never triggers it."""
+    import contextlib
+    import io
+    from . import run as R
+
+    class Stop(Exception):
+        pass
+    calls, polls = [], {"n": 0}
+
+    def fake_investigate(be, cfg, alert, *a, **k):
+        calls.append(alert)
+        raise Stop
+
+    def fake_sleep(_s):
+        polls["n"] += 1
+        if polls["n"] > 5:
+            raise Stop
+    orig = R.investigate_incident, R.time.sleep
+    R.investigate_incident, R.time.sleep = fake_investigate, fake_sleep
+    try:
+        for name, fires in (("cart_down", True), ("healthy", False)):
+            calls.clear()
+            polls["n"] = 0
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    R.watch(FakeDemo(scenario(name)), CFG, type("Args", (), {"no_llm": True, "no_act": True})())
+                except Stop:
+                    pass
+            assert bool(calls) == fires, (name, calls)
+            if fires:
+                assert polls["n"] == 1 and calls[0].startswith("auto-detected: cart service_down"), (polls, calls)
+    finally:
+        R.investigate_incident, R.time.sleep = orig
+
+
 def _run_full(name, answers, cfg=None, setup=None):
     cfg = cfg or Config(dry_run=True, verify_minutes=0.05, action_api_url=ACTION_URL)
     be = FakeDemo(scenario(name))
@@ -989,6 +1124,8 @@ def t_control_room_end_to_end():
                 break
             time.sleep(0.2)
         assert v.get("approval") and v["approval"]["proposal"]["action"] == "restart_service", v.get("log", [])[-5:]
+        d = call("/api/dryrun", {})                       # preview: the Action API says what it WOULD run, changes nothing
+        assert d["ok"] and d["result"].get("dry_run") is True and "would_run" in d["result"], d
         call("/api/approve", {"decision": "approve", "confirm": "yes", "name": "tester"})
         for _ in range(60):
             v = call("/api/job")
@@ -1000,6 +1137,17 @@ def t_control_room_end_to_end():
         assert r["rca"] and r["triage"] and r["actions_taken"][0]["response"].get("dry_run") is True
         f = call("/api/safety", {"kind": "forbidden"})
         assert all(row["code"] == 403 for row in f["rows"]), f
+        # the agent is told only that an alert fired: no fault name in what it reads, none in the incident id
+        import re as _re
+        from . import drill
+        names = set(dict(ui.DEMO_FAULTS))
+        words = names | {drill.CATALOG[n][3] for n in names} | {"cart", "payment", "valkey", "ad", "recommendation"}
+        assert not any(_re.search(rf"\b{_re.escape(w)}\b", ui.ALERT_TEXT) for w in words), ui.ALERT_TEXT
+        assert _re.fullmatch(r"INC-\d{8}-\d{6}", r["incident_id"]), r["incident_id"]
+        # edge cases on the page are the real decision/verify code: these are the outcomes it must show
+        outs = {k: [x["outcome"] for x in call("/api/edge", {"kind": k})["rows"]] for k in ("reviewer", "unsupported", "nofix", "verifyfail")}
+        assert outs == {"reviewer": ["proposes the fix", "proposes the fix", "ESCALATES"], "unsupported": ["ESCALATES"],
+                        "nofix": ["ESCALATES"], "verifyfail": ["ESCALATES"]}, outs
     finally:
         srv.shutdown()
         ui.BACKEND = old_backend

@@ -1,0 +1,224 @@
+{
+  "ts": "20261024-122623",
+  "git": "66a5bf3d",
+  "llm": false,
+  "ablate": "",
+  "summary": {
+    "correct": 10,
+    "escalated": 0,
+    "WRONG": 0,
+    "unlabelled": 0
+  },
+  "n_labelled": 10,
+  "calibration": {
+    "0.8-1.0": [
+      8,
+      8
+    ],
+    "0.6-0.8": [
+      1,
+      1
+    ],
+    "0.2-0.4": [
+      1,
+      1
+    ]
+  },
+  "rows": [
+    {
+      "bundle": "ad_starved",
+      "label": {
+        "component": "ad",
+        "fault_class": "cpu_starved",
+        "injected": "(automatic) limiting ad to 0.05 CPU",
+        "ts": "2026-10-24 01:36"
+      },
+      "pred_component": "ad",
+      "pred_class": "cpu_starved",
+      "confidence": 0.873,
+      "status": "escalated",
+      "component_ok": true,
+      "class_ok": true,
+      "outcome": "correct",
+      "secondary_found": null,
+      "schema_errors": [],
+      "evidence_n": 4
+    },
+    {
+      "bundle": "cart_down",
+      "label": {
+        "component": "cart",
+        "fault_class": "service_down",
+        "injected": "(automatic) stopping the cart container",
+        "ts": "2026-10-24 10:14"
+      },
+      "pred_component": "cart",
+      "pred_class": "service_down",
+      "confidence": 0.829,
+      "status": "diagnosed",
+      "component_ok": true,
+      "class_ok": true,
+      "outcome": "correct",
+      "secondary_found": null,
+      "schema_errors": [],
+      "evidence_n": 1
+    },
+    {
+      "bundle": "catalog_down",
+      "label": {
+        "component": "product-catalog",
+        "fault_class": "service_down",
+        "injected": "(automatic) stopping product-catalog",
+        "ts": "2026-10-24 00:43"
+      },
+      "pred_component": "product-catalog",
+      "pred_class": "service_down",
+      "confidence": 0.878,
+      "status": "diagnosed",
+      "component_ok": true,
+      "class_ok": true,
+      "outcome": "correct",
+      "secondary_found": null,
+      "schema_errors": [],
+      "evidence_n": 2
+    },
+    {
+      "bundle": "combo_cart_ad",
+      "label": {
+        "component": "cart",
+        "fault_class": "service_down",
+        "injected": "(automatic) COMBINED: stopping cart AND limiting ad to 0.05 CPU",
+        "ts": "2026-10-24 01:47",
+        "secondary": {
+          "component": "ad",
+          "fault_class": "cpu_starved"
+        }
+      },
+      "pred_component": "cart",
+      "pred_class": "service_down",
+      "confidence": 0.864,
+      "status": "diagnosed",
+      "component_ok": true,
+      "class_ok": true,
+      "outcome": "correct",
+      "secondary_found": true,
+      "schema_errors": [],
+      "evidence_n": 2
+    },
+    {
+      "bundle": "db_down",
+      "label": {
+        "component": "astronomy-db",
+        "fault_class": "service_down",
+        "injected": "(automatic) stopping the astronomy-db database",
+        "ts": "2026-10-24 00:56"
+      },
+      "pred_component": "astronomy-db",
+      "pred_class": "service_down",
+      "confidence": 0.683,
+      "status": "diagnosed",
+      "component_ok": true,
+      "class_ok": true,
+      "outcome": "correct",
+      "secondary_found": null,
+      "schema_errors": [],
+      "evidence_n": 1
+    },
+    {
+      "bundle": "healthy",
+      "label": {
+        "component": "none",
+        "fault_class": "none",
+        "injected": "Nothing - leave everything normal (tests for false alarms)",
+        "ts": "2026-10-23 23:55"
+      },
+      "pred_component": "ad",
+      "pred_class": "latency_degradation",
+      "confidence": 0.36,
+      "status": "escalated",
+      "component_ok": true,
+      "class_ok": false,
+      "outcome": "correct",
+      "secondary_found": null,
+      "schema_errors": [],
+      "evidence_n": 1
+    },
+    {
+      "bundle": "payment_paused",
+      "label": {
+        "component": "payment",
+        "fault_class": "service_down",
+        "injected": "(automatic) freezing the payment container",
+        "ts": "2026-10-24 00:32"
+      },
+      "pred_component": "payment",
+      "pred_class": "service_down",
+      "confidence": 0.81,
+      "status": "diagnosed",
+      "component_ok": true,
+      "class_ok": true,
+      "outcome": "correct",
+      "secondary_found": null,
+      "schema_errors": [],
+      "evidence_n": 1
+    },
+    {
+      "bundle": "quote_down",
+      "label": {
+        "component": "quote",
+        "fault_class": "service_down",
+        "injected": "(automatic) stopping quote",
+        "ts": "2026-10-24 01:09"
+      },
+      "pred_component": "quote",
+      "pred_class": "service_down",
+      "confidence": 0.878,
+      "status": "diagnosed",
+      "component_ok": true,
+      "class_ok": true,
+      "outcome": "correct",
+      "secondary_found": null,
+      "schema_errors": [],
+      "evidence_n": 2
+    },
+    {
+      "bundle": "rec_mem",
+      "label": {
+        "component": "recommendation",
+        "fault_class": "memory_starved",
+        "injected": "(automatic) squeezing recommendation to 40 MB of memory",
+        "ts": "2026-10-24 01:22"
+      },
+      "pred_component": "recommendation",
+      "pred_class": "memory_starved",
+      "confidence": 0.891,
+      "status": "escalated",
+      "component_ok": true,
+      "class_ok": true,
+      "outcome": "correct",
+      "secondary_found": null,
+      "schema_errors": [],
+      "evidence_n": 2
+    },
+    {
+      "bundle": "valkey",
+      "label": {
+        "component": "valkey-cart",
+        "fault_class": "service_down",
+        "injected": "(automatic) pausing the valkey-cart cache",
+        "ts": "2026-10-24 00:19"
+      },
+      "pred_component": "valkey-cart",
+      "pred_class": "service_down",
+      "confidence": 0.829,
+      "status": "diagnosed",
+      "component_ok": true,
+      "class_ok": true,
+      "outcome": "correct",
+      "secondary_found": null,
+      "schema_errors": [],
+      "evidence_n": 1
+    }
+  ],
+  "threshold": 0.55
+}
