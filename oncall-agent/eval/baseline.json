@@ -1,0 +1,526 @@
+{
+ "recorded_at": "2026-10-23T23:51:26",
+ "stats": {
+  "product-catalog": {
+   "cpu_pct": 857.29,
+   "mem_pct": 93.48
+  },
+  "frontend": {
+   "cpu_pct": 21.73,
+   "mem_pct": 95.53
+  },
+  "opensearch": {
+   "cpu_pct": 19.65,
+   "mem_pct": 90.78
+  },
+  "ad": {
+   "cpu_pct": 18.57,
+   "mem_pct": 89.41
+  },
+  "astronomy-db": {
+   "cpu_pct": 1.2,
+   "mem_pct": 80.36
+  },
+  "quote": {
+   "cpu_pct": 26.08,
+   "mem_pct": 77.19
+  },
+  "email": {
+   "cpu_pct": 61.35,
+   "mem_pct": 76.02
+  },
+  "payment": {
+   "cpu_pct": 139.65,
+   "mem_pct": 94.63
+  },
+  "shipping": {
+   "cpu_pct": 37.56,
+   "mem_pct": 70.47
+  },
+  "frontend-proxy": {
+   "cpu_pct": 21.49,
+   "mem_pct": 69.19
+  },
+  "checkout": {
+   "cpu_pct": 168.59,
+   "mem_pct": 72.99
+  },
+  "grafana": {
+   "cpu_pct": 6.17,
+   "mem_pct": 68.11
+  },
+  "valkey-cart": {
+   "cpu_pct": 24.12,
+   "mem_pct": 59.8
+  },
+  "recommendation": {
+   "cpu_pct": 21.28,
+   "mem_pct": 52.11
+  },
+  "prometheus": {
+   "cpu_pct": 3.21,
+   "mem_pct": 47.77
+  },
+  "currency": {
+   "cpu_pct": 9.28,
+   "mem_pct": 44.06
+  },
+  "load-generator": {
+   "cpu_pct": 216.42,
+   "mem_pct": 43.6
+  },
+  "cart": {
+   "cpu_pct": 0.42,
+   "mem_pct": 37.73
+  },
+  "otel-collector": {
+   "cpu_pct": 37.97,
+   "mem_pct": 38.51
+  },
+  "jaeger": {
+   "cpu_pct": 3.71,
+   "mem_pct": 29.54
+  },
+  "opamp-server": {
+   "cpu_pct": 13.82,
+   "mem_pct": 22.0
+  },
+  "telemetry-docs": {
+   "cpu_pct": 8.11,
+   "mem_pct": 13.94
+  },
+  "image-provider": {
+   "cpu_pct": 5.62,
+   "mem_pct": 11.96
+  }
+ },
+ "log_errors": {
+  "product-catalog": 6,
+  "frontend": 3,
+  "ad": 6,
+  "astronomy-db": 34,
+  "quote": 0,
+  "email": 0,
+  "payment": 0,
+  "shipping": 0,
+  "frontend-proxy": 0,
+  "checkout": 0,
+  "valkey-cart": 0,
+  "recommendation": 3,
+  "currency": 0,
+  "load-generator": 0,
+  "cart": 1,
+  "image-provider": 0
+ },
+ "red": [
+  {
+   "service": "frontend-proxy",
+   "rps": 3.192,
+   "rps_base": 3.072,
+   "rps_ratio": 1.04,
+   "error_rate": 0.0627,
+   "error_rate_base": 0.0625,
+   "p95_ms": 14955.9,
+   "p95_base_ms": 14650.0,
+   "p95_ratio": 1.02
+  },
+  {
+   "service": "ad",
+   "rps": 0.125,
+   "rps_base": 0.142,
+   "rps_ratio": 0.88,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 125.0,
+   "p95_base_ms": 57.5,
+   "p95_ratio": 2.17
+  },
+  {
+   "service": "quote",
+   "rps": 0.017,
+   "rps_base": 0.017,
+   "rps_ratio": 1.0,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 3.8,
+   "p95_base_ms": 1.9,
+   "p95_ratio": 2.0
+  },
+  {
+   "service": "product-catalog",
+   "rps": 0.008,
+   "rps_base": 0.008,
+   "rps_ratio": 1.0,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 15000.0,
+   "p95_base_ms": 9750.0,
+   "p95_ratio": 1.54
+  },
+  {
+   "service": "checkout",
+   "rps": 0.025,
+   "rps_base": 0.017,
+   "rps_ratio": 1.5,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 15000.0,
+   "p95_base_ms": 15000.0,
+   "p95_ratio": 1.0
+  },
+  {
+   "service": "currency",
+   "rps": 0.15,
+   "rps_base": 0.142,
+   "rps_ratio": 1.06,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 1.9,
+   "p95_base_ms": 1.9,
+   "p95_ratio": 1.0
+  },
+  {
+   "service": "email",
+   "rps": 0.008,
+   "rps_base": 0.008,
+   "rps_ratio": 1.0,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 48.0,
+   "p95_base_ms": 48.0,
+   "p95_ratio": 1.0
+  },
+  {
+   "service": "recommendation",
+   "rps": 0.2,
+   "rps_base": 0.1,
+   "rps_ratio": 2.0,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 15000.0,
+   "p95_base_ms": 15000.0,
+   "p95_ratio": 1.0
+  },
+  {
+   "service": "telemetry-docs",
+   "rps": 0.183,
+   "rps_base": 0.184,
+   "rps_ratio": 1.0,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 1.9,
+   "p95_base_ms": 1.9,
+   "p95_ratio": 1.0
+  },
+  {
+   "service": "image-provider",
+   "rps": 0.433,
+   "rps_base": 0.401,
+   "rps_ratio": 1.08,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 1.9,
+   "p95_base_ms": 1.9,
+   "p95_ratio": 0.98
+  },
+  {
+   "service": "frontend",
+   "rps": 3.534,
+   "rps_base": 3.205,
+   "rps_ratio": 1.1,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 12933.3,
+   "p95_base_ms": 14909.1,
+   "p95_ratio": 0.87
+  },
+  {
+   "service": "payment",
+   "rps": 0.025,
+   "rps_base": 0.017,
+   "rps_ratio": 1.5,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 5.7,
+   "p95_base_ms": 7.8,
+   "p95_ratio": 0.73
+  },
+  {
+   "service": "cart",
+   "rps": 0.408,
+   "rps_base": 0.434,
+   "rps_ratio": 0.94,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 46.1,
+   "p95_base_ms": 113.3,
+   "p95_ratio": 0.41
+  },
+  {
+   "service": "shipping",
+   "rps": 0.042,
+   "rps_base": 0.033,
+   "rps_ratio": 1.25,
+   "error_rate": 0.0,
+   "error_rate_base": 0.0,
+   "p95_ms": 46.7,
+   "p95_base_ms": 180.0,
+   "p95_ratio": 0.26
+  }
+ ],
+ "health": {
+  "ad": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 314.6
+  },
+  "astronomy-db": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 83.9
+  },
+  "cart": {
+   "health": null,
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 167.8
+  },
+  "checkout": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 21.0
+  },
+  "currency": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 21.0
+  },
+  "email": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 104.9
+  },
+  "frontend": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 262.1
+  },
+  "frontend-proxy": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 94.4
+  },
+  "grafana": {
+   "health": null,
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 524.3
+  },
+  "image-provider": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 125.8
+  },
+  "jaeger": {
+   "health": null,
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 1258.3
+  },
+  "load-generator": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 1572.9
+  },
+  "opamp-server": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 68.2
+  },
+  "opensearch": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 1073.7
+  },
+  "otel-collector": {
+   "health": null,
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 419.4
+  },
+  "payment": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 146.8
+  },
+  "product-catalog": {
+   "health": "unhealthy",
+   "restarts": 1,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 21.0
+  },
+  "prometheus": {
+   "health": null,
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 209.7
+  },
+  "quote": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 41.9
+  },
+  "recommendation": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 524.3
+  },
+  "shipping": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 21.0
+  },
+  "telemetry-docs": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 104.9
+  },
+  "valkey-cart": {
+   "health": "healthy",
+   "restarts": 0,
+   "status": "running",
+   "cpu_limit_cores": null,
+   "mem_limit_mb": 21.0
+  }
+ },
+ "graph": [
+  [
+   "frontend-proxy",
+   "frontend",
+   119
+  ],
+  [
+   "frontend-web",
+   "frontend-proxy",
+   5
+  ],
+  [
+   "cart",
+   "flagd",
+   77
+  ],
+  [
+   "frontend",
+   "cart",
+   78
+  ],
+  [
+   "cart",
+   "valkey-cart",
+   202
+  ],
+  [
+   "frontend-proxy",
+   "flagd",
+   1
+  ],
+  [
+   "frontend",
+   "currency",
+   2
+  ],
+  [
+   "load-generator",
+   "frontend-proxy",
+   90
+  ],
+  [
+   "checkout",
+   "cart",
+   35
+  ],
+  [
+   "checkout",
+   "currency",
+   50
+  ],
+  [
+   "shipping",
+   "quote",
+   17
+  ],
+  [
+   "checkout",
+   "shipping",
+   34
+  ],
+  [
+   "checkout",
+   "payment",
+   17
+  ],
+  [
+   "frontend",
+   "checkout",
+   17
+  ],
+  [
+   "checkout",
+   "email",
+   17
+  ],
+  [
+   "checkout",
+   "product-catalog",
+   5
+  ],
+  [
+   "product-catalog",
+   "astronomy-db",
+   5
+  ],
+  [
+   "payment",
+   "flagd",
+   2
+  ]
+ ]
+}

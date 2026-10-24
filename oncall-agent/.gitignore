@@ -6,4 +6,5 @@ __pycache__/
 *.pyc
 practice/.injected.json
 *.tmp
-baseline.json
+/baseline.json
+eval/bundles/*/*.old

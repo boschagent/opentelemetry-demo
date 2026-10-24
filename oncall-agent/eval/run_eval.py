@@ -33,6 +33,9 @@ def main():
     os.environ["ONCALL_DEGRADE"] = a.degrade
     labels = json.load(open("eval/labels.json", encoding="utf-8")) if os.path.exists("eval/labels.json") else {}
     cfg = Config.from_env()
+    # the healthy baseline recorded right before the overnight run travels with the bundles, so anyone can replay them
+    if os.path.exists(os.path.join("eval", "baseline.json")) and "ONCALL_BASELINE_FILE" not in os.environ:
+        cfg.baseline_file = os.path.join("eval", "baseline.json")
     rows = []
     for b in sorted(glob.glob("eval/bundles/*/calls.jsonl")):
         name = os.path.basename(os.path.dirname(b))

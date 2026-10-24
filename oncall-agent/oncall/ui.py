@@ -465,9 +465,10 @@ input,select{font:inherit;padding:7px 10px;border:1px solid var(--line);border-r
 <header><div><h1>On-call Control Room</h1><div class="sub">Incident Zero · team boschagent · AI on-call engineer for the Astronomy Shop</div></div>
 <nav id="nav"></nav></header>
 <main>
+<div class="card" id="activity" style="padding:10px 16px"><span class="mut">Activity:</span> <span id="act-title">idle</span> <span id="act-pill" class="pill">idle</span> <span id="act-last" class="mono mut"></span></div>
 <section id="t-setup">
  <div class="card"><h2>1 · Preflight</h2><p class="mut">Checks everything the agent needs. Green = ready.</p>
-  <div class="row"><button class="b p" onclick="post('/api/check')">Run checks</button><button class="b" onclick="post('/api/start_demo')">Start the demo (docker compose up)</button><button class="b" onclick="post('/api/baseline')">Record healthy baseline</button></div>
+  <div class="row"><button class="b p" onclick="post('/api/check')">Run checks</button><button class="b" onclick="post('/api/start_demo')">Start the demo (only if checks say it is down)</button><button class="b" onclick="post('/api/baseline')">Record healthy baseline</button></div>
   <div id="checks"></div></div>
  <div class="card"><h2>How it works</h2><p class="mut">Orange = what makes this agent different. Columns 1–3 only read; column 4 is the only path that changes anything.</p>
   <div class="cols">
@@ -532,7 +533,9 @@ function howto(){const v=document.getElementById('inc').value;const all=[...CAT.
 loadCat();
 function runInc(){const v=document.getElementById('inc').value;document.getElementById('result').innerHTML='';post('/api/run',{incident:v,execute:document.getElementById('exe').checked,llm:document.getElementById('llm').checked})}
 function steps(stage,done,seen){seen=seen||[];document.getElementById('steps').innerHTML=STAGES.map(s=>`<span class="${s[0]===stage&&!done?'now':(seen.includes(s[0])?'done':'')}">${s[1]}</span>`).join('')}
-async function poll(){clearTimeout(timer);const v=await j('/api/job?since='+since);if(v.status==='idle'){return}
+function activity(v){document.getElementById('act-title').textContent=v.title||'idle';const p=document.getElementById('act-pill');p.textContent=v.status;p.className='pill '+(v.status==='running'?'warn':(v.status==='done'?'ok':(v.status==='error'?'bad':'')));
+ const last=(v.log||[]).filter(x=>x.trim()).slice(-1)[0];if(last)document.getElementById('act-last').textContent=last.slice(0,140)}
+async function poll(){clearTimeout(timer);const v=await j('/api/job?since='+since);if(v.status==='idle'){return}activity(v);
  if(!cur||cur!==v.id){cur=v.id;since=0;document.getElementById('log').textContent='';return poll()}
  const lg=document.getElementById('log');if(v.log&&v.log.length){lg.textContent+=(lg.textContent?'\n':'')+v.log.join('\n');lg.scrollTop=lg.scrollHeight}since=v.next;
  if(v.kind==='incident'){steps(v.stage,v.status!=='running',v.seen);approval(v.approval)}
