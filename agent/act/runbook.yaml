@@ -1,0 +1,15 @@
+version: 1
+actions:
+  restart_service:
+    description: Restart the diagnosed service using the organisers' Action API.
+    rollback: null
+    parameters:
+      service:
+        type: string
+        pattern: "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$"
+    preconditions:
+      - investigation_status_is_diagnosis
+      - diagnosis_is_not_escalated
+      - reviewer_verdict_is_agree
+      - confidence_meets_threshold
+      - service_matches_diagnosed_component
